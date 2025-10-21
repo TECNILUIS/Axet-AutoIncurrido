@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "Axet-AutoIncurrido",
+  "version": "1.0",
+  "description": "Automatiza la imputación de horas según la jornada.",
+  "permissions": [
+    "storage",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://axet.nttdata.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png"
+    }
+  },
+  "options_page": "options.html",
+  "background": {
+    "service_worker": "background.js"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["injector.js"],
+      "matches": ["https://axet.nttdata.com/*"]
+    }
+  ]
+}
