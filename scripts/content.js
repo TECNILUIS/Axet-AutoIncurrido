@@ -5,20 +5,59 @@
         console.log('[DEBUG] chrome.storage contents:', storage);
 
         let configuracionTareas = null;
-        if (storage.tareasConfig && (storage.tareasConfig.jornadas || storage.tareasConfig.jornadaReducidaActiva !== undefined)) {
-            configuracionTareas = storage.tareasConfig;
-            console.log('[DEBUG] usando storage.tareasConfig');
-        } else if (storage.config && (storage.config.jornadas || storage.config.tasks)) {
-            // fallback: tomar la configuración desde la página de opciones (config)
+
+        // Preferimos la nueva clave canonical 'config'
+        if (storage.config && (storage.config.jornadas || storage.config.tasks)) {
+            const cfg = storage.config;
             configuracionTareas = {
-                jornadas: storage.config.jornadas || { normal: [], reducida: [] },
-                jornadaReducidaActiva: storage.config.jornadaReducidaActiva !== undefined ? storage.config.jornadaReducidaActiva : true
+                tasks: cfg.tasks || [],
+                jornadas: cfg.jornadas || { normal: [], reducida: [] },
+                jornadaReducidaActiva: cfg.jornadaReducidaActiva !== undefined ? cfg.jornadaReducidaActiva : true
             };
-            console.log('[DEBUG] fallback: construido configuracionTareas desde storage.config');
+            console.log('[DEBUG] usando storage.config');
+        } else if (storage.tareasConfig && (storage.tareasConfig.jornadas || storage.tareasConfig.jornadaReducidaActiva !== undefined)) {
+            // Compatibilidad: migramos tareasConfig -> config, y luego usamos la estructura existente
+            console.log('[DEBUG] solo se detectó storage.tareasConfig, ejecutando migración a config...');
+            const t = storage.tareasConfig;
+            // Convertir tareasConfig a la forma 'config'
+            // asumimos que tareasConfig.jornadas.normal/reducida son arrays alineados con las tareas
+            const normal = [];
+            const reducida = [];
+            const tasks = [];
+
+            // tomamos el máximo entre la longitud de las listas para reconstruir tasks
+            const maxLen = Math.max((t.jornadas?.normal || []).length, (t.jornadas?.reducida || []).length);
+            for (let i = 0; i < maxLen; i++) {
+                const n = (t.jornadas?.normal || [])[i] || { nombre: '', codigoProyecto: '', horas: '', minutos: '' };
+                const r = (t.jornadas?.reducida || [])[i] || { nombre: '', codigoProyecto: '', horas: '', minutos: '' };
+                // preferir el nombre/código de normal, si no, el de reducida
+                const nombre = n.nombre || r.nombre || '';
+                const codigo = n.codigoProyecto || r.codigoProyecto || '';
+                tasks.push({ nombre, codigoProyecto: codigo });
+                normal.push({ horas: n.horas || '', minutos: n.minutos || '' });
+                reducida.push({ horas: r.horas || '', minutos: r.minutos || '' });
+            }
+
+            const newConfig = { tasks, jornadas: { normal, reducida }, jornadaReducidaActiva: Boolean(t.jornadaReducidaActiva) };
+            // Guardar la nueva config y continuar usando ésta
+            chrome.storage.sync.set({ config: newConfig }, () => {
+                console.log('[MIGRATION] config escrito desde tareasConfig');
+                // Eliminamos la clave legacy para evitar duplicación futura
+                chrome.storage.sync.remove('tareasConfig', () => {
+                    console.log('[MIGRATION] tareasConfig eliminada tras migración');
+                });
+            });
+
+            configuracionTareas = {
+                tasks: newConfig.tasks || [],
+                jornadas: newConfig.jornadas,
+                jornadaReducidaActiva: newConfig.jornadaReducidaActiva
+            };
+            console.log('[DEBUG] migrado configuracion desde tareasConfig');
         }
 
         if (!configuracionTareas) {
-            showToast("Error: No se encontró la configuración válida. Abre las Opciones y guarda la configuración.");
+            requestPageToast("Error: No se encontró la configuración válida. Abre las Opciones y guarda la configuración.");
             console.error('[ERROR] No se encontró configuración válida en chrome.storage', storage);
             return;
         }
@@ -28,29 +67,36 @@
             const diaSemana = fecha.getDay();
             const mes = fecha.getMonth() + 1;
             const diaMes = fecha.getDate();
-            if (diaSemana === 0 || diaSemana === 6) { showToast("El día seleccionado es fin de semana."); return []; }
+            if (diaSemana === 0 || diaSemana === 6) { requestPageToast("El día seleccionado es fin de semana."); return []; }
 
             const esVerano = (mes > 7 || (mes === 7 && diaMes >= 1)) && (mes < 9 || (mes === 9 && diaMes <= 15));
 
             // Usamos exclusivamente la nueva estructura 'jornadas'
             if (!configuracionTareas.jornadas) {
-                showToast("Error: Configuración inválida. Por favor, actualiza la configuración en Opciones.");
+                requestPageToast("Error: Configuración inválida. Por favor, actualiza la configuración en Opciones.");
                 return [];
             }
 
             const jornadas = configuracionTareas.jornadas;
             const jornadaReducidaActiva = Boolean(configuracionTareas.jornadaReducidaActiva);
 
-            // Si la jornada reducida está activada
+            // Seleccionamos la lista de tiempos a usar según el día
+            let tiemposSeleccionados = jornadas.normal || [];
             if (jornadaReducidaActiva) {
-                // Lunes a Jueves -> normal
-                if (diaSemana >= 1 && diaSemana <= 4) return jornadas.normal || [];
-                // Viernes o días de verano -> reducida
-                if (diaSemana === 5 || esVerano) return jornadas.reducida || [];
+                if (diaSemana >= 1 && diaSemana <= 4) tiemposSeleccionados = jornadas.normal || [];
+                if (diaSemana === 5 || esVerano) tiemposSeleccionados = jornadas.reducida || [];
             }
 
-            // Si la jornada reducida está desactivada: todas las jornadas usan 'normal' (8h según validación en opciones)
-            return jornadas.normal || [];
+            // Merge: combinamos la metadata de tareas (nombre, codigoProyecto) con los tiempos seleccionados
+            const tasksMeta = Array.isArray(configuracionTareas.tasks) && configuracionTareas.tasks.length ? configuracionTareas.tasks : [];
+            const maxLen = Math.max(tasksMeta.length, tiemposSeleccionados.length);
+            const resultado = [];
+            for (let i = 0; i < maxLen; i++) {
+                const meta = tasksMeta[i] || { nombre: `Tarea ${i + 1}`, codigoProyecto: '' };
+                const tiempo = tiemposSeleccionados[i] || { horas: '', minutos: '' };
+                resultado.push({ nombre: meta.nombre || `Tarea ${i + 1}`, codigoProyecto: meta.codigoProyecto || '', horas: tiempo.horas || '', minutos: tiempo.minutos || '' });
+            }
+            return resultado;
         };
 
         const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -74,59 +120,36 @@
         });
 
         /**
-         * Muestra una notificación tipo "toast" en la esquina de la página.
-         * @param {string} message - El mensaje a mostrar.
-         * @param {string} [type='info'] - El tipo de notificación: 'info', 'success', o 'error'.
+         * Helper to request a toast in the page context. Content scripts cannot directly call
+         * functions defined in the page context, so we dispatch a CustomEvent that the shared
+         * toast script listens for. If the shared script isn't present, inject it from
+         * web_accessible_resources.
          */
-        function showToast(message, type = 'info') {
-            // Elimina cualquier toast anterior para no solaparlos
-            const existingToast = document.getElementById('extension-toast');
-            if (existingToast) {
-                existingToast.remove();
+        function requestPageToast(message, type = 'info', duration = 4000) {
+            const dispatch = () => {
+                window.dispatchEvent(new CustomEvent('ExtensionShowToast', { detail: { message, type, duration } }));
+            };
+
+            // If page already has a listener (shared/toast.js), dispatch immediately
+            if (typeof window.showToast === 'function') {
+                dispatch();
+                return;
             }
 
-            const toast = document.createElement('div');
-            toast.id = 'extension-toast';
-            toast.textContent = message;
-
-            // Estilos base
-            toast.style.position = 'fixed';
-            toast.style.top = '20px';
-            toast.style.right = '20px';
-            toast.style.padding = '15px 20px';
-            toast.style.borderRadius = '8px';
-            toast.style.color = 'white';
-            toast.style.zIndex = '999999';
-            toast.style.fontFamily = 'sans-serif';
-            toast.style.fontSize = '16px';
-            toast.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
-            toast.style.opacity = '0';
-            toast.style.transform = 'translateX(100%)';
-            toast.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
-
-            // Colores según el tipo
-            if (type === 'success') {
-                toast.style.backgroundColor = '#28a745'; // Verde
-            } else if (type === 'error') {
-                toast.style.backgroundColor = '#dc3545'; // Rojo
-            } else {
-                toast.style.backgroundColor = '#17a2b8'; // Azul info
+            // Otherwise inject the shared toast script and dispatch after load
+            try {
+                const s = document.createElement('script');
+                s.src = chrome.runtime.getURL('scripts/shared/toast.js');
+                s.onload = () => {
+                    try { dispatch(); } catch (e) { console.warn('dispatch toast failed', e); }
+                    s.remove();
+                };
+                (document.head || document.documentElement).appendChild(s);
+            } catch (err) {
+                // As a last resort, show a simple alert
+                console.warn('[TOAST] Could not inject shared script, falling back to console.');
+                console.log(message);
             }
-
-            document.body.appendChild(toast);
-
-            // Animación de entrada
-            setTimeout(() => {
-                toast.style.opacity = '1';
-                toast.style.transform = 'translateX(0)';
-            }, 10);
-
-            // Desaparición automática
-            setTimeout(() => {
-                toast.style.opacity = '0';
-                toast.style.transform = 'translateX(100%)';
-                setTimeout(() => toast.remove(), 300); // Elimina del DOM tras la animación
-            }, 4000); // El toast dura 4 segundos
         }
 
         async function incurrirTareas(fechaParaIncurrir) {
@@ -150,7 +173,7 @@
             const currentMinutesIncurred = (currentH * 60) + currentM;
 
             if (currentMinutesIncurred >= totalMinutesToIncur) {
-                showToast(`Ya se han incurrido ${currentHoursText} horas o más para esta fecha. El script se detendrá.`);
+                requestPageToast(`Ya se han incurrido ${currentHoursText} horas o más para esta fecha. El script se detendrá.`);
                 return;
             }
 
@@ -187,7 +210,7 @@
                     if (!opcionSeleccionar) {
                         const mensaje = `Tarea "${tarea.nombre}" (código ${tarea.codigoProyecto}) no encontrada en el desplegable. Comprueba que existe exactamente en la página.`;
                         console.error('[ERROR] Tarea configurada no encontrada tras múltiples intentos:', tarea, { dropdownOptionsCount: opciones.length });
-                        showToast(mensaje, 'error');
+                        requestPageToast(mensaje, 'error');
                         return; // Salimos de incurrirTareas para no continuar con el proceso
                     }
                 }
@@ -221,7 +244,7 @@
                 tareaCounter++;
             }
             await sleep(300);
-            showToast("¡Proceso completado!");
+            requestPageToast("¡Proceso completado!");
         }
 
         async function runAutomation() {
