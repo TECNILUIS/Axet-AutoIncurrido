@@ -58,15 +58,3 @@ Antes de usarla, necesitas configurar tus tareas:
 3.  Haz clic en **Guardar Cambios**.
 4.  Ve a tu página de Axet para imputar horas.
 5.  Haz clic en el icono de la extensión y pulsa el botón **Incurrir Tareas**. La magia comenzará.
-
----
-
-## 🤝 Cómo Contribuir
-
-Las contribuciones son bienvenidas. Si quieres mejorar la extensión, sigue estos pasos:
-
-1.  Haz un **Fork** del proyecto.
-2.  Crea tu propia Rama de Característica (`git checkout -b feature/AmazingFeature`).
-3.  Haz **Commit** de tus cambios (`git commit -m 'Add some AmazingFeature'`).
-4.  Haz **Push** a la Rama (`git push origin feature/AmazingFeature`).
-5.  Abre un **Pull Request**.
