@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Configuración de Tareas</title>
+    <style>
+        /* Center the options container */
+        html, body { height: 100%; margin: 0; }
+        body { display: flex; align-items: flex-start; justify-content: center; font-family: sans-serif; padding: 20px; background: #fafafa; }
+        .options-container { width: 100%; max-width: 820px; background: white; padding: 18px; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,0.06); }
+        h1, h2 { border-bottom: 2px solid #eee; padding-bottom: 5px; }
+    .task-list, .time-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
+    .task-row { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; border: 1px solid #ccc; padding: 10px; border-radius: 5px; }
+    .task-inputs { display:flex; gap:8px; align-items:center; }
+    .task-inputs .task-nombre { flex:1; }
+    .task-inputs .task-codigo { width:180px; }
+    .time-row { display: grid; grid-template-columns: minmax(150px, 1fr) auto; gap: 12px; align-items: center; border: 1px solid #ccc; padding: 10px; border-radius: 5px; }
+    .task-row input { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+    .time-row .task-label { padding-left: 4px; font-weight: 600; }
+    .time-row input { width: 72px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; text-align:center; }
+    .time-row .time-inputs { justify-self: end; }
+    .remove-task-btn, .add-task-btn { padding: 8px 12px; background-color: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer; }
+    .add-task-btn { background-color: #4CAF50; margin-top: 10px; }
+
+    /* Main controls layout: buttons equally distributed */
+    .main-controls { display:flex; gap:12px; margin-top: 12px; }
+    .main-controls button { flex: 1; padding: 12px 14px; font-size: 15px; border: none; border-radius: 6px; color: white; cursor: pointer; }
+    /* Give the save button more weight: 2:1:1 ratio */
+    .main-controls button#save { flex: 2; background-color: #008CBA; }
+    .main-controls button.secondary { background-color: #007bff; }
+    .main-controls button.secondary.alt { background-color: #6c757d; }
+    </style>
+</head>
+<body>
+    <div class="options-container">
+        <h1>Configuración de Tareas</h1>
+
+        <h2>1. Define tus Tareas</h2>
+        <div id="task-definitions" class="task-list">
+            </div>
+        <div id="empty-tasks-msg" style="color:#555; margin-top:8px; display:none;">No hay tareas definidas. Usa "Añadir Tarea" para empezar.</div>
+        <div style="margin-top:10px; display:flex; gap:8px; align-items:center;">
+            <button id="add-task-btn" class="add-task-btn">➕ Añadir Tarea</button>
+            <button id="add-example-btn" class="add-task-btn" style="background-color:#17a2b8;">✨ Añadir ejemplo</button>
+        </div>
+
+        <div id="time-section">
+            <h2 style="margin-top: 30px;">2. Asigna el Tiempo por Jornada</h2>
+            <div id="empty-times-msg" style="color:#555; margin-top:8px; display:none;">Las asignaciones de tiempo aparecerán aquí cuando definas tareas.</div>
+                <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+                    <label for="toggle-reducida">Activar Jornada Reducida</label>
+                    <input type="checkbox" id="toggle-reducida">
+                    <small style="color:#555;">Si está activado, 'Jornada Normal' será L-J (9h) y 'Jornada Reducida' será Viernes y Verano (7h)</small>
+                </div>
+
+                <h3 id="label-normal">Jornada Normal</h3>
+                <div id="time-assignments-normal" class="time-list">
+                </div>
+
+                <h3 id="label-reducida">Jornada Reducida</h3>
+                <div id="time-assignments-reducida" class="time-list">
+                </div>
+            </div>
+
+        <hr style="margin-top: 30px;">
+        <div class="main-controls">
+            <button id="save">Guardar Cambios</button>
+            
+            <button id="export-btn" class="secondary">Exportar Configuración</button>
+            
+            <button id="import-btn" class="secondary alt">Importar Configuración</button>
+            <input type="file" id="import-file" accept=".json" style="display: none;">
+        </div>
+
+        <p style="text-align: center; color: #777; font-size: 12px; margin-top: 20px;">
+            Creado por <strong>José Luis Guidú Navas</strong> 🚀
+        </p>
+    </div>
+
+    <template id="task-definition-template">
+        <div class="task-row">
+            <div class="task-inputs">
+                <input type="text" class="task-nombre" placeholder="Nombre (ej: Construcción)">
+                <input type="text" class="task-codigo" placeholder="Código Proyecto (ej: WSONE...)">
+            </div>
+            <button class="remove-task-btn">✖</button>
+        </div>
+    </template>
+
+    <template id="time-assignment-template">
+        <div class="time-row">
+            <span class="task-label"></span>
+            <div class="time-inputs" role="group" aria-label="Horas y minutos">
+                <input type="number" class="task-horas" placeholder="HH" min="0" max="23" aria-label="Horas" />
+                <span class="time-sep">:</span>
+                <input type="number" class="task-minutos" placeholder="MM" min="0" max="59" aria-label="Minutos" />
+            </div>
+        </div>
+    </template>
+
+    <style>
+        .time-inputs { display:flex; align-items:center; gap:6px; }
+        .time-inputs input { width:64px; padding:8px; border-radius:4px; border:1px solid #ddd; text-align:center; }
+        .time-sep { font-weight:bold; font-size:16px; margin:0 4px; }
+        @media (max-width: 480px) {
+            .time-inputs input { width:48px; padding:6px; }
+        }
+    </style>
+
+    <script src="../scripts/shared/toast.js"></script>
+    <script src="../scripts/options.js"></script>
+</body>
+</html>
