@@ -1,4 +1,4 @@
-# Axet-AutoIncurrido
+# ![Icon](https://github.com/TECNILUIS/Axet-AutoIncurrido/blob/main/icons/icon128.png) Axet-AutoIncurrido
 
 ![Versión](https://img.shields.io/badge/version-1.0-blue)
 ![Plataforma](https://img.shields.io/badge/Plataforma-Google_Chrome-brightgreen)
