@@ -1,152 +1,247 @@
-// scripts/content.js
+// scripts/content.js v2.3 (Refactorizado + Incurrir Rango)
 
-(async function() {
+// Envolvemos todo en una IIFE (Immediately Invoked Function Expression)
+// para evitar contaminar el scope global MÁS de lo necesario
+(function() {
     'use strict';
+    console.log("[Content Script] Inicializando...");
 
-    // Envolvemos todo en un bloque try/catch principal
-    try {
-        // --- CARGA DE CONFIGURACIÓN ---
-        // Usamos await para asegurarnos de tener la config antes de continuar
-        const storage = await chrome.storage.sync.get({ configV2: null });
-        const config = storage.configV2;
-
-        if (!config || !config.proyectos) {
-            // Usamos requestPageToast si está disponible, si no, alert
-            const msg = "Error: No se encontró configuración V2 válida. Abre las Opciones y guarda.";
-            console.error('[Content Script] Configuración V2 inválida o no encontrada:', storage);
-            if (typeof requestPageToast === 'function') requestPageToast(msg, 'error');
-            else alert(msg);
-            return; // Detener ejecución
-        }
-        console.log("[Content Script] Configuración V2 cargada:", config);
-
-
-        // --- FUNCIÓN PRINCIPAL DE EJECUCIÓN (llamada al final) ---
-        async function runAutomation() {
-            // Asegurarse de que las funciones necesarias estén cargadas
-             if (typeof getPageDate !== 'function' || typeof findElementByText !== 'function' ||
-                 typeof incurrirTareas !== 'function' || typeof getTareasParaDia_v2_3 !== 'function' ||
-                 typeof navigateToDate !== 'function') {
-                 throw new Error("Funciones esenciales no cargadas. Revisa el orden de inyección.");
-             }
-
-            console.log("================ INICIO DEL SCRIPT ================");
-
-            const pageDate = getPageDate();
-            if (!pageDate) {
-                 // Si no podemos obtener la fecha, podríamos estar en una página incorrecta
-                 if (document.querySelector('.calendario')) {
-                      console.log("[Content Script] Parece que estamos en la vista de calendario. No se puede iniciar desde aquí.");
-                      if (typeof requestPageToast === 'function') requestPageToast("Ejecuta la extensión desde la página principal de incurridos.", "info");
-                 } else {
-                      throw new Error("No se pudo obtener la fecha de la página. Asegúrate de estar en la página principal.");
-                 }
-                 return;
-             }
-
-            const today = new Date();
-            // Normalizar a medianoche para comparación
-            pageDate.setHours(0, 0, 0, 0);
-            today.setHours(0, 0, 0, 0);
-
-            const pageDateStr = pageDate.toISOString().split('T')[0];
-            const todayStr = today.toISOString().split('T')[0];
-
-            // Comprobar si es fin de semana ANTES de cualquier acción
-            const diaSemanaHoy = today.getDay();
-            if (diaSemanaHoy === 0 || diaSemanaHoy === 6) {
-                 if (typeof requestPageToast === 'function') requestPageToast("Hoy es fin de semana, no se incurrirán tareas.", "info");
-                 console.log("[Content Script] Es fin de semana.");
-                 return;
-            }
-
-            const horasCargadas = getHorasActuales(); // Ya devuelve '00:00' si no encuentra
-
-            if (pageDateStr === todayStr) {
-                // Caso 1: La fecha es hoy. Incurrimos normal.
-                console.log("[Content Script] La fecha es la actual. Calculando tareas para hoy...");
-                const tareasHoy = getTareasParaDia_v2_3(today, config);
-                await incurrirTareas(today, tareasHoy);
-            } else if (pageDate < today && horasCargadas === '00:00') {
-                // Caso 2: Fecha anterior Y 0 horas. Incurrimos en esa fecha (si hay reglas para ella).
-                 console.log(`[Content Script] Fecha anterior (${pageDateStr}) sin horas. Calculando tareas para esa fecha...`);
-                 const tareasPasadas = getTareasParaDia_v2_3(pageDate, config);
-                 await incurrirTareas(pageDate, tareasPasadas);
+    // --- Definición Global de requestPageToast ---
+    // (Necesaria aquí si toast.js no se inyecta o no define una función global)
+    // Es mejor si toast.js se inyecta y define window.showToast globalmente.
+    if (typeof window.requestPageToast === 'undefined') {
+        window.requestPageToast = function (message, type = 'info', duration = 4000) {
+            // Intenta usar la función global si existe (inyectada por toast.js)
+            if (typeof window.showToast === 'function') {
+                window.showToast(message, type, duration);
             } else {
-                // Caso 3: Fecha anterior y ya hay horas O fecha futura. Corregimos a hoy.
-                console.log(`[Content Script] La fecha (${pageDateStr}) no es la actual o ya tiene horas. Navegando a hoy (${todayStr})...`);
-                 const todayDDMMYYYY = `${String(today.getDate()).padStart(2, '0')}/${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`;
-                 await navigateToDate(todayDDMMYYYY, getPageDate); // Le pasamos getPageDate
-                 await sleep(1500); // Espera adicional post-navegación
-                 console.log("[Content Script] Fecha corregida. Calculando tareas para hoy...");
-                 const tareasHoy = getTareasParaDia_v2_3(today, config);
-                 await incurrirTareas(today, tareasHoy);
+                // Fallback si showToast no está disponible
+                console.warn(`[TOAST FALLBACK] (${type}, ${duration}ms): ${message}`);
+                // alert(`(${type}) ${message}`); // Evitar alert si es posible
             }
-             console.log("================ FIN DEL SCRIPT ================");
-        }
+        };
+        console.log("[Content Script] Función requestPageToast definida (puede usar fallback).");
+    }
 
-        // --- LISTENER PARA MENSAJES DEL POPUP ---
-        chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-            console.log("[Content Script] Mensaje recibido:", request);
-            if (request.action === "deleteInRange") {
-                // Asegurarse de que la función de borrado esté disponible
-                if (typeof deleteTasksInRange === 'function') {
-                    deleteTasksInRange(request.startDate, request.endDate)
-                        .then(() => sendResponse({ status: "Borrado iniciado" }))
-                        .catch((error) => {
-                            console.error("[Content Script] Error en deleteTasksInRange:", error);
-                            if(typeof requestPageToast === 'function') requestPageToast(`Error en borrado: ${error.message}`, 'error');
+    // --- Carga Asíncrona de Configuración ---
+    async function loadConfig() {
+        try {
+            // Usar la clave final 'configV2'
+            const storage = await chrome.storage.sync.get({ configV2: null });
+            const config = storage.configV2;
+
+            // Validar la estructura esperada para v2.3
+            if (!config || !config.proyectos || !config.reglasPlanificacion || config.sdaComun === undefined || config.horasEsperadasDiarias === undefined) {
+                 // Podríamos intentar migrar de claves antiguas aquí si quisiéramos
+                 console.error("[Content Script] Configuración V2 (configV2) inválida o no encontrada en storage:", storage);
+                 throw new Error("Configuración V2 inválida o no encontrada. Por favor, abre Opciones, configura (o importa tu CSV/JSON) y guarda.");
+            }
+            console.log("[Content Script] Configuración V2 cargada:", config);
+            return config;
+        } catch (error) {
+            console.error("[Content Script] Error crítico al cargar la configuración:", error);
+            // Asegurarse de que requestPageToast esté definido antes de usarlo
+            if (typeof requestPageToast === 'function') {
+                 requestPageToast(`Error al cargar configuración: ${error.message}`, 'error', 6000);
+            } else {
+                 alert(`Error al cargar configuración: ${error.message}`);
+            }
+            return null; // Devolver null para indicar fallo
+        }
+    }
+
+
+    // --- Orquestador Principal para INCURRIR HOY ---
+    async function runIncurrirAutomation(config) {
+         // Verificar dependencias de los módulos inyectados
+         if (typeof getPageDate !== 'function' || typeof findElementByText !== 'function' ||
+             typeof getHorasActuales !== 'function' || typeof navigateToDate !== 'function' ||
+             typeof getTareasParaDia_v2_3 !== 'function' || typeof incurrirTareas !== 'function' ||
+             typeof sleep !== 'function') {
+             throw new Error("Faltan funciones esenciales (incurrir). Revisa la inyección de scripts.");
+         }
+        console.log("================ INICIO INCURRIDO HOY ================");
+        const pageDate = getPageDate(); // de utils.js
+        if (!pageDate) {
+             if (document.querySelector('.calendario')) { // Estamos en vista calendario
+                 requestPageToast("Ejecuta 'Incurrir Hoy' desde la pág. principal.", "info");
+             } else {
+                 throw new Error("No se pudo obtener la fecha. ¿Estás en la pág. principal de incurridos?");
+             }
+             return; // Salir si no estamos en la página correcta
+         }
+        const today = new Date(); pageDate.setHours(0,0,0,0); today.setHours(0,0,0,0);
+        const pageDateStr = pageDate.toISOString().split('T')[0];
+        const todayStr = today.toISOString().split('T')[0];
+        const diaSemanaHoy = today.getDay(); // 0=Dom, 6=Sab
+
+        // Comprobar fin de semana
+        if (diaSemanaHoy === 0 || diaSemanaHoy === 6) {
+             requestPageToast("Hoy es fin de semana. No se puede incurrir.", "info"); return;
+        }
+        const horasCargadas = getHorasActuales(); // de utils.js
+
+        if (pageDateStr === todayStr) {
+            console.log("[Incurrir Hoy] Fecha actual. Calculando tareas...");
+            // *** ¡¡AQUÍ NECESITAMOS LA FUNCIÓN getTareasParaDia_v2_3 IMPLEMENTADA EN incurrir.js!! ***
+            const tareasHoy = getTareasParaDia_v2_3(today, config); // ¡Llamada al módulo incurrir.js!
+            await incurrirTareas(today, tareasHoy); // ¡Llamada al módulo incurrir.js!
+        } else if (pageDate < today && horasCargadas === '00:00') {
+            // Incurrir en fecha pasada si no tiene horas
+            console.log(`[Incurrir Hoy] Fecha anterior (${pageDateStr}) sin horas. Calculando...`);
+            const tareasPasadas = getTareasParaDia_v2_3(pageDate, config);
+            await incurrirTareas(pageDate, tareasPasadas);
+        } else {
+            // Corregir fecha a hoy
+            console.log(`[Incurrir Hoy] Fecha incorrecta (${pageDateStr}). Navegando a hoy (${todayStr})...`);
+            const todayDDMMYYYY = `${String(today.getDate()).padStart(2, '0')}/${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`;
+            await navigateToDate(todayDDMMYYYY, getPageDate); // ¡Llamada al módulo navigation.js!
+            await sleep(1500); // Espera post-navegación
+            console.log("[Incurrir Hoy] Fecha corregida. Calculando tareas para hoy...");
+            const tareasHoy = getTareasParaDia_v2_3(today, config);
+            await incurrirTareas(today, tareasHoy);
+        }
+         console.log("================ FIN INCURRIDO HOY ================");
+    }
+
+    // --- Orquestador Principal para BORRAR RANGO ---
+    async function runBorrarAutomation(config, startDate, endDate) {
+         // Verificar dependencias
+         if (typeof deleteTasksInRange !== 'function') {
+             throw new Error("Falta la función deleteTasksInRange (módulo borrar.js). Revisa inyección.");
+         }
+         console.log(`================ INICIO BORRADO (${startDate} a ${endDate}) ================`);
+         // Pasar también la config, aunque borrar.js actualmente no la usa directamente
+         await deleteTasksInRange(startDate, endDate); // ¡Llamada al módulo borrar.js!
+         console.log("================ FIN BORRADO ================");
+    }
+
+
+    // --- Orquestador Principal para INCURRIR RANGO ---
+    async function runIncurrirRangeAutomation(config, startDateStr, endDateStr) {
+        // Verificar dependencias
+         if (typeof getPageDate !== 'function' || typeof navigateToDate !== 'function' ||
+             typeof getTareasParaDia_v2_3 !== 'function' || typeof incurrirTareas !== 'function' ||
+             typeof sleep !== 'function' || typeof requestPageToast !== 'function') {
+             throw new Error("Faltan funciones esenciales (incurrir en rango). Revisa inyección.");
+         }
+        console.log(`================ INICIO INCURRIR RANGO (${startDateStr} a ${endDateStr}) ================`);
+        requestPageToast(`Iniciando incurrido en rango ${startDateStr} a ${endDateStr}...`, 'info', 6000);
+
+        const startDate = new Date(startDateStr + 'T00:00:00');
+        const endDate = new Date(endDateStr + 'T00:00:00');
+        let currentDate = new Date(startDate);
+
+        try {
+            while (currentDate <= endDate) {
+                const dayDDMMYYYY = `${String(currentDate.getDate()).padStart(2, '0')}/${String(currentDate.getMonth() + 1).padStart(2, '0')}/${currentDate.getFullYear()}`;
+                const dayYYYYMMDD = currentDate.toISOString().split('T')[0];
+                const diaSemana = currentDate.getDay(); // 0=Dom, 6=Sab
+
+                console.log(`[Incurrir Rango] --- Procesando ${dayYYYYMMDD} ---`);
+
+                // Saltar fines de semana
+                if (diaSemana === 0 || diaSemana === 6) {
+                    console.log(`[Incurrir Rango] Saltando fin de semana: ${dayDDMMYYYY}`);
+                } else {
+                    // Solo procesar días laborables
+                    requestPageToast(`Incurriendo día: ${dayDDMMYYYY}`, 'info');
+
+                    // 1. Navegar al día (si no estamos ya)
+                    const currentPageDate = getPageDate();
+                    const currentPageStr = currentPageDate ? currentPageDate.toISOString().split('T')[0] : null;
+
+                    if (!currentPageStr || currentPageStr !== dayYYYYMMDD) {
+                        console.log(`[Incurrir Rango] Navegando a ${dayDDMMYYYY}...`);
+                        await navigateToDate(dayDDMMYYYY, getPageDate); // navigation.js
+                        await sleep(2500); // Espera post-navegación
+                    } else {
+                        console.log(`[Incurrir Rango] Ya estamos en ${dayDDMMYYYY}.`);
+                        await sleep(500); // Pequeña pausa
+                    }
+
+                    // 2. Calcular e incurrir tareas para ESE día
+                    console.log(`[Incurrir Rango] Calculando tareas para ${dayDDMMYYYY}...`);
+                    // *** ¡¡AQUÍ NECESITAMOS LA FUNCIÓN getTareasParaDia_v2_3 IMPLEMENTADA!! ***
+                    const tareasDelDia = getTareasParaDia_v2_3(currentDate, config); // incurrir.js
+                    await incurrirTareas(currentDate, tareasDelDia); // incurrir.js
+                } // Fin if día laborable
+
+                // 3. Pasar al siguiente día
+                currentDate.setDate(currentDate.getDate() + 1);
+                await sleep(500); // Pausa breve entre días
+
+            } // Fin while
+
+            requestPageToast("¡Incurrido de rango completado!", "success");
+            console.log("================ FIN INCURRIR RANGO ================");
+
+        } catch (error) {
+             console.error("[Incurrir Rango] Error durante el proceso:", error);
+             requestPageToast(`Error en incurrido de rango: ${error.message}`, 'error', 6000);
+        }
+    }
+
+
+    // --- LISTENER PARA MENSAJES DEL POPUP ---
+    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+        console.log("[Content Script] Mensaje recibido:", request);
+
+        // Cargamos la configuración ANTES de procesar cualquier acción
+        // Usamos .then/.catch aquí para manejar la asincronía del listener
+        loadConfig().then(config => {
+            if (!config) {
+                 // loadConfig ya mostró el error
+                 sendResponse({ status: "Error", message: "Configuración no válida o no cargada." });
+                 return; // No continuar si no hay config
+            }
+
+            // Usar un switch para manejar las acciones
+            switch (request.action) {
+                case "incurrirHoy":
+                    runIncurrirAutomation(config)
+                        .then(() => sendResponse({ status: "Incurrido 'Hoy' iniciado"}))
+                        .catch(error => {
+                            console.error("[Content Script] Error en runIncurrirAutomation:", error);
+                            requestPageToast(`Error al incurrir hoy: ${error.message}`, 'error');
                             sendResponse({ status: "Error", message: error.message });
                         });
-                    return true; // Respuesta asíncrona
-                } else {
-                    console.error("[Content Script] La función deleteTasksInRange no está definida.");
-                     if(typeof requestPageToast === 'function') requestPageToast("Error interno: Función de borrado no encontrada.", 'error');
-                     sendResponse({ status: "Error", message: "Función de borrado no encontrada." });
-                     return false;
-                }
-            } else if (request.action === "incurrirHoy") { // Podríamos añadir una acción explícita si quisiéramos
-                 runAutomation()
-                     .then(() => sendResponse({ status: "Incurrido iniciado"}))
-                     .catch(error => {
-                         console.error("[Content Script] Error en runAutomation:", error);
-                          if(typeof requestPageToast === 'function') requestPageToast(`Error al incurrir: ${error.message}`, 'error');
-                          sendResponse({ status: "Error", message: error.message });
-                     });
-                 return true; // Respuesta asíncrona
+                    break; // Fin incurrirHoy
+
+                case "deleteInRange":
+                    runBorrarAutomation(config, request.startDate, request.endDate)
+                        .then(() => sendResponse({ status: "Borrado iniciado" }))
+                        .catch((error) => {
+                            console.error("[Content Script] Error en runBorrarAutomation:", error);
+                            requestPageToast(`Error en borrado: ${error.message}`, 'error');
+                            sendResponse({ status: "Error", message: error.message });
+                        });
+                    break; // Fin deleteInRange
+
+                case "incurrirInRange":
+                    runIncurrirRangeAutomation(config, request.startDate, request.endDate)
+                        .then(() => sendResponse({ status: "Incurrido en rango iniciado" }))
+                        .catch((error) => {
+                            console.error("[Content Script] Error en runIncurrirRangeAutomation:", error);
+                            requestPageToast(`Error incurriendo rango: ${error.message}`, 'error');
+                            sendResponse({ status: "Error", message: error.message });
+                        });
+                    break; // Fin incurrirInRange
+
+                default:
+                    console.warn("[Content Script] Acción desconocida recibida:", request.action);
+                    sendResponse({ status: "Acción desconocida" });
+                    return false; // Indicar que no manejamos este mensaje síncronamente
             }
-            return false; // No manejamos este mensaje
+        }).catch(error => {
+             // Error durante loadConfig
+             console.error("[Content Script] Fallo crítico al cargar config antes de procesar mensaje:", error);
+             sendResponse({ status: "Error", message: "Fallo al cargar configuración." });
         });
 
-        // --- PUNTO DE ENTRADA ---
-        // Podríamos decidir si ejecutar runAutomation automáticamente al cargar
-        // o esperar una señal del popup. Por ahora, NO lo ejecutamos auto.
-        console.log("[Content Script] Cargado y listo. Esperando acción desde el popup.");
-        // await runAutomation(); // Descomentar si quieres que se ejecute solo al hacer clic en el popup
+        return true; // Indicar que la respuesta siempre será asíncrona
+    });
 
-    } catch (error) {
-        // Captura errores durante la carga inicial o cualquier error no capturado dentro de las funciones async
-        console.error("Extensión: Ha ocurrido un error fatal en el script principal.", error);
-        // Intentar mostrar toast si la función está disponible
-         try {
-             if (typeof requestPageToast === 'function') {
-                 requestPageToast(`Error fatal: ${error.message}`, "error");
-             } else {
-                 alert(`Error fatal en la extensión: ${error.message}.`);
-             }
-         } catch(e) {
-             alert(`Error fatal en la extensión: ${error.message}.`);
-         }
-    }
+    console.log("[Content Script] Cargado y listo v2.3.");
 
-    // Definición global de requestPageToast (si no se carga desde shared/toast.js)
-    // Es mejor si está en shared/toast.js y ese script se inyecta primero.
-    // Si toast.js se inyecta, esta definición no es necesaria aquí.
-    if (typeof window.requestPageToast === 'undefined') {
-         window.requestPageToast = function (message, type = 'info', duration = 4000) {
-             console.warn('[TOAST FALLBACK]', `(${type}) ${message}`);
-             // alert(`(${type}) ${message}`); // Evitar alert si es posible
-         };
-    }
-
-})(); // Cierre final del script
+})(); // Fin de la IIFE
