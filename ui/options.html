@@ -2,111 +2,111 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Configuración de Tareas (v2.2)</title>
+    <title>Configuración de Tareas (v2.4 - Importación CSV)</title>
     <style>
-        /* Center the options container */
+        /* Estilos generales (ajustados para simplicidad) */
         html, body { height: 100%; margin: 0; }
         body { display: flex; align-items: flex-start; justify-content: center; font-family: sans-serif; padding: 20px; background: #fafafa; }
-        .options-container { width: 100%; max-width: 980px; background: white; padding: 18px; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,0.06); }
-        h1, h2, h3 { border-bottom: 2px solid #eee; padding-bottom: 5px; }
-        h3 { border-bottom: none; }
-        input[type="text"], input[type="number"], input[type="date"], select { padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
+        .options-container { width: 100%; max-width: 700px; /* Más estrecho ahora */ background: white; padding: 20px; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,0.06); }
+        h1, h2 { border-bottom: 2px solid #eee; padding-bottom: 8px; margin-bottom: 15px;}
+        input[type="text"] { padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
         button { border: none; border-radius: 4px; cursor: pointer; color: white; padding: 8px 12px; font-size: 14px; }
-        .btn-add { background-color: #4CAF50; }
-        .btn-remove { background-color: #f44336; }
-        .list-container { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
-        .rule-row { display: grid; gap: 10px; align-items: center; border: 1px solid #ccc; padding: 12px; border-radius: 5px; }
+        /* .btn-add { background-color: #4CAF50; } */ /* Ya no se usa */
+        /* .btn-remove { background-color: #f44336; } */ /* Ya no se usa */
+        .list-container { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; max-height: 200px; overflow-y: auto; border: 1px solid #eee; padding: 10px; border-radius: 5px; background: #f9f9f9;} /* Contenedor scrollable */
+        .rule-row { display: grid; gap: 10px; align-items: center; border: 1px solid #ccc; padding: 8px 10px; border-radius: 5px; background: white;}
 
-        /* Estilos para Proyectos (Simplificado) */
-        #project-list .rule-row { grid-template-columns: 2fr 1fr auto; } /* Código, (SDA Display Opcional), Botón */
-
-        /* Estilos para Reglas de Asignación */
-        #asignacion-list .rule-row { grid-template-columns: 2fr 1fr 1fr 1fr 1fr auto; } /* Proyecto, Tipo Tarea, Inicio, Fin, Tipo Imputación, Botón */
+        /* Estilos para Proyectos (Readonly) */
+        #project-list .rule-row { grid-template-columns: 1fr auto; } /* Código, SDA Display */
+        #project-list input[type="text"] { background-color: #f0f0f0; border-color: #e0e0e0; cursor: not-allowed;} /* Estilo readonly */
+        #project-list .project-sda-display { font-size: 0.9em; color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
         /* Controles Principales */
-        .main-controls { display:flex; flex-wrap: wrap; align-items: center; gap: 15px; margin-top: 12px; }
-        .main-controls button { flex: 1; padding: 12px 14px; font-size: 15px; }
-        .main-controls button#save { flex-basis: 100%; order: 4; background-color: #008CBA; } /* Botón Guardar ocupa toda la fila inferior */
-        .main-controls button.secondary { background-color: #007bff; flex-grow: 1;}
-        .main-controls button.secondary.alt { background-color: #6c757d; flex-grow: 1;}
-        /* Contenedor específico para importación CSV */
-        .csv-import-controls { flex-grow: 1; display: flex; gap: 8px; border: 1px solid #ccc; padding: 8px; border-radius: 5px; }
-
-        #status { display: block; width: 100%; text-align: center; margin-top: 10px; font-weight: bold; }
+        .main-controls { display:flex; flex-wrap: wrap; align-items: center; gap: 15px; margin-top: 25px; }
+        .main-controls button { flex: 1; padding: 12px 14px; font-size: 15px; min-width: 150px; /* Ancho mínimo botones */ }
+        .main-controls button#save { display: none; /* Oculto por defecto */ flex-basis: 100%; order: 4; background-color: #008CBA; } /* Botón Guardar oculto */
+        .main-controls button.secondary { background-color: #007bff; }
+        .main-controls button.secondary.alt { background-color: #6c757d; }
+        .csv-import-controls { flex-grow: 1; display: flex; gap: 8px; border: 1px solid #ccc; padding: 8px; border-radius: 5px; min-width: 300px; /* Ancho mínimo para import CSV */ }
+        #status { display: block; width: 100%; text-align: center; margin-top: 15px; font-weight: bold; min-height: 1.2em; /* Espacio para mensajes */}
+        
+        .summary-section {
+            margin-top: 30px;
+            border-top: 2px solid #eee;
+            padding-top: 15px;
+        }
+        .summary-details p { margin: 5px 0; }
+        .summary-details strong { min-width: 100px; display: inline-block;}
+        .plan-display {
+             margin-top: 15px;
+             max-height: 300px; /* Limitar altura */
+             overflow-y: auto; /* Scroll si es necesario */
+             border: 1px solid #eee;
+             padding: 10px;
+             background: #fdfdfd;
+             font-size: 0.9em;
+             line-height: 1.4;
+        }
+         .plan-display h4 { margin-top: 0; border-bottom: 1px solid #ccc; padding-bottom: 5px; }
+         .plan-display ul { padding-left: 20px; margin: 5px 0 15px 0; }
+         .plan-display li { margin-bottom: 3px; }
+         .plan-display .tipo-tarea { font-style: italic; color: #555; }
+         .plan-display .tipo-imputacion { font-weight: bold; }
+    
     </style>
 </head>
 <body>
     <div class="options-container">
-        <h1>Configuración de Tareas (v2.2)</h1>
+        <h1>Configuración de Tareas (v2.4)</h1>
 
-        <h2>1. Mis Proyectos</h2>
-        <p>Define los códigos de proyecto (Feature) en los que trabajas. El código SDATool se importará del CSV y será el mismo para todos.</p>
-        <div id="project-list" class="list-container">
-            </div>
-        <button id="add-project" class="btn-add">➕ Añadir Proyecto</button>
+        <h2>Importar Planificación desde CSV</h2>
+        <p>Usa la opción **"Importar Plan (CSV)"** para cargar la configuración completa desde tu archivo.</p>
 
-        <h2>2. Reglas de Planificación Semanal</h2>
-        <p>Define la Etapa (Tipo Tarea) y cómo se asignan las horas para cada proyecto en rangos de fechas.</p>
-        <div id="asignacion-list" class="list-container">
-
-        </div>
-        <button id="add-asignacion-rule" class="btn-add">➕ Añadir Regla de Asignación</button>
-
-        <hr style="margin-top: 30px;">
         <div class="main-controls">
-            <button id="save">Guardar Cambios</button>
-
-            <button id="export-btn" class="secondary">Exportar Config (.json)</button>
-
-            <div class="csv-import-controls">
-                <input type="text" id="employee-id" placeholder="Tu ID (ej. T012345)" style="flex-grow: 1;">
-                <button id="import-csv-btn" class="secondary alt" style="white-space: nowrap;">Importar Proyectos/Horas (CSV)</button>
-                <input type="file" id="import-csv-file" accept=".csv" style="display: none;">
-            </div>
-
+             <button id="save">Guardar Cambios</button> <button id="export-btn" class="secondary">Exportar Config (.json)</button>
+             <div class="csv-import-controls">
+                 <input type="text" id="employee-id" placeholder="Tu ID (ej. T012345)" style="flex-grow: 1;">
+                 <button id="import-csv-btn" class="secondary alt" style="white-space: nowrap;">Importar Plan (CSV)</button>
+                 <input type="file" id="import-csv-file" accept=".csv,.CSV" style="display: none;">
+             </div>
              <button id="import-json-btn" class="secondary alt">Importar Config (.json)</button>
              <input type="file" id="import-json-file" accept=".json" style="display: none;">
-
         </div>
         <span id="status"></span>
 
-        <p style="text-align: center; color: #777; font-size: 12px; margin-top: 20px;">
+        <div class="summary-section">
+            <h2>Resumen de Planificación Importada</h2>
+            <div class="summary-details">
+                <p><strong>SDA Común:</strong> <span id="summary-sda">No importado</span></p>
+                <p><strong>Proyectos:</strong> <span id="summary-proyectos-count">0</span></p>
+                <p><strong>Días Planificados:</strong> <span id="summary-dias-count">0</span></p>
+            </div>
+            <div class="plan-display" id="summary-plan-diario">
+                <h4>Plan Diario (Ejemplo):</h4>
+                <p>Importa un archivo CSV para ver la planificación detallada.</p>
+                </div>
+        </div>
+        <hr style="margin-top: 25px;">
+
+        <h2>Mis Proyectos (Importados)</h2>
+        <p>Lista de códigos de proyecto encontrados en el CSV.</p>
+        <div id="project-list" class="list-container">
+            </div>
+
+        <p style="text-align: center; color: #777; font-size: 12px; margin-top: 25px;">
             Creado por <strong>José Luis Guidú Navas</strong> 🚀
         </p>
     </div>
 
     <template id="project-template">
-        <div class="rule-row" style="grid-template-columns: 1fr auto auto;">
-            <input type="text" class="project-codigo" placeholder="Código Proyecto (WSONE...)">
-            <span class="project-sda-display" style="font-size: 0.9em; color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="SDATool Común"></span>
-            <button class="btn-remove">✖</button>
-        </div>
-    </template>
-
-    <template id="asignacion-rule-template">
-        <div class="rule-row" style="grid-template-columns: 2fr 1fr 1fr 1.5fr 1.5fr auto auto;">
-            <select class="rule-proyecto-select">
-                <option value="">-- Proyecto --</option>
-            </select>
-            <input type="date" class="rule-inicio" title="Fecha Inicio">
-            <input type="date" class="rule-fin" title="Fecha Fin">
-            <select class="rule-tipo-tarea" title="Etapa (Tipo Tarea)">
-                <option value="Diseño">Diseño (Amarillo)</option>
-                <option value="Construcción">Construcción (Azul)</option>
-                <option value="Pruebas">Pruebas (Morado)</option>
-                <option value="Despliegue">Despliegue (Verde)</option>
-            </select>
-            <select class="rule-tipo-imputacion-horas" title="Asignación de Horas">
-                <option value="fija">Fija (1 Hora)</option>
-                <option value="patron">Según Patrón Semanal</option>
-                <option value="fija_patron">Fija (1h) + Patrón</option>
-            </select>
-            <button class="btn-clone" style="background-color: #ffc107; color: black;" title="Clonar esta regla">❐</button>
-            <button class="btn-remove" title="Eliminar esta regla">✖</button>
+        <div class="rule-row" style="grid-template-columns: 1fr auto;">
+            <input type="text" class="project-codigo" placeholder="Código Proyecto" readonly title="Código del Proyecto (Feature)">
+            <span class="project-sda-display" style="font-size: 0.9em; color: #555;" title="SDATool Común Importado"></span>
         </div>
     </template>
 
     <script src="../scripts/shared/toast.js"></script>
-    <script src="../lib/papaparse.min.js"></script> <script src="../scripts/options.js"></script>
+    <script src="../lib/papaparse.min.js"></script>
+    <script src="../scripts/options.js"></script>
 </body>
 </html>
