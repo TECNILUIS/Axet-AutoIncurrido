@@ -1,19 +1,86 @@
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="../lib/flatpickr/flatpickr.min.css">
+    <style>
+        body {
+            width: 320px;
+            text-align: center;
+            font-family: sans-serif;
+            padding: 10px;
+            font-size: 14px;
+            overflow: hidden;
+        }
+        button {
+            width: 90%; padding: 10px; font-size: 14px; font-weight: bold;
+            cursor: pointer; border: none; border-radius: 4px; color: white;
+            margin: 8px auto; display: block; box-sizing: border-box;
+        }
+        #runScript { background-color: #007bff; }
+        .range-actions { display: flex; justify-content: space-around; gap: 10px; margin-top: 5px; margin-bottom: 5px; }
+        .range-actions button { width: 48%; margin: 0; padding: 11px 5px; font-size: 13px; white-space: nowrap; }
+        #incurrirRangoBtn { background-color: #218838; }
+        #deleteScript { background-color: #c82333; }
+        hr { border: none; border-top: 1px solid #eee; margin: 12px 0; }
+        h3, h4 { margin-top: 0; margin-bottom: 8px; color: #333; }
+
+        .date-picker-container { margin-bottom: 8px; position: relative; }
+
+        /* --- HIDE THE INPUT FIELD --- */
+        #fechaRango {
+            display: none !important; /* Force hide the input */
+        }
+        /* --- END HIDE INPUT --- */
+
+        /* Estilos para Flatpickr inline (ajustar margen superior ya que no hay input visible) */
+        .flatpickr-calendar.inline {
+            position: relative !important; box-shadow: none !important;
+            border: 1px solid #eee !important; width: 100% !important;
+            max-width: 100%; margin: 0 auto 10px auto; /* Centrar, margen inferior */
+            display: block !important; box-sizing: border-box;
+            font-size: 13px;
+            /* margin-top: 5px; */ /* Opcional: añadir espacio si se ve muy pegado al título */
+        }
+        .flatpickr-calendar.inline .flatpickr-month,
+        .flatpickr-calendar.inline .flatpickr-weekdays { height: 35px; line-height: 35px; }
+        .flatpickr-calendar.inline .flatpickr-weekday { font-size: 0.85em; line-height: 18px; height: 18px; }
+        .flatpickr-calendar.inline .flatpickr-days { width: 100% !important; }
+        .flatpickr-calendar.inline .flatpickr-day {
+           max-width: none; width: calc(100% / 7 - 4px); height: 35px;
+           line-height: 35px; font-size: 13px; margin: 1px; padding: 0;
+           box-sizing: border-box;
+        }
+        .flatpickr-day.selected, .flatpickr-day.startRange, .flatpickr-day.endRange,
+        .flatpickr-day.inRange:not(.startRange):not(.endRange) { border-radius: 3px; border-width: 1px; }
+        .flatpickr-day.startRange, .flatpickr-day.endRange {
+             width: calc(100% / 7 - 4px); height: 35px; line-height: 35px;
+         }
+        /* Estilos para static month/year header (sin cambios) */
+        .flatpickr-calendar.inline .flatpickr-current-month input.cur-year {
+            background: none; border: none; box-shadow: none; pointer-events: none;
+            color: inherit; font-size: inherit; font-weight: inherit; padding: 0;
+            margin: 0; display: inline; width: auto; text-align: left;
+        }
+        .flatpickr-calendar.inline .numInputWrapper span.arrowUp,
+        .flatpickr-calendar.inline .numInputWrapper span.arrowDown { display: none !important; }
+        .flatpickr-calendar.inline .flatpickr-current-month span.cur-month { display: inline; padding-right: 5px; }
+
+    </style>
+</head>
 <body>
     <h3>Asistente de Horas</h3>
-
-    <button id="runScript" style="margin-bottom: 15px;">Incurrir Tareas Hoy</button>
-
+    <button id="runScript">Incurrir Tareas **Hoy**</button>
     <hr>
-
-    <h4 style="margin-bottom: 5px;">Borrar Rango</h4>
-    <div style="font-size: 12px; margin-bottom: 10px;">
-        <label for="fechaInicio">Inicio:</label>
-        <input type="date" id="fechaInicio" name="fechaInicio" style="width: 120px; margin-right: 5px;">
-        <br>
-        <label for="fechaFin">Fin:</label>
-        <input type="date" id="fechaFin" name="fechaFin" style="width: 120px; margin-top: 5px;">
+    <h4>Acciones por Rango</h4>
+    <div class="date-picker-container">
+         <input type="text" id="fechaRango" name="fechaRango">
     </div>
-    <button id="deleteScript" style="background-color: #dc3545; width: 80%;">Borrar Imputaciones</button>
+    <div class="range-actions">
+        <button id="incurrirRangoBtn">Incurrir Rango</button>
+        <button id="deleteScript">Borrar Rango</button>
+    </div>
 
+    <script src="../lib/flatpickr/flatpickr.min.js"></script>
+    <script src="../lib/flatpickr/l10n/es.js"></script>
     <script src="../scripts/popup.js"></script>
 </body>
+</html>
