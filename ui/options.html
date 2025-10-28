@@ -24,7 +24,7 @@
         .csv-import-controls { flex-grow: 1; display: flex; gap: 8px; border: 1px solid #ccc; padding: 8px; border-radius: 5px; min-width: 300px; /* Ancho mínimo para import CSV */ }
         #status { display: block; width: 100%; text-align: center; margin-top: 15px; font-weight: bold; min-height: 1.2em; /* Espacio para mensajes */}
 
-        /* Estilos para VISTA SEMANAL */
+        /* --- ESTILOS VISTA SEMANAL CON COLORES --- */
         .summary-section { margin-top: 30px; border-top: 2px solid #eee; padding-top: 15px; }
         .summary-details p { margin: 5px 0; }
         .summary-details strong { min-width: 100px; display: inline-block;}
@@ -33,30 +33,46 @@
         #current-week-display { font-weight: bold; font-size: 1.1em; text-align: center; flex-grow: 1; margin: 0 10px;}
         .weekly-plan-display {
              display: grid;
-             grid-template-columns: repeat(5, 1fr); /* 7 columnas */
-             gap: 10px; /* Espacio entre días */
-             border: 1px solid #eee; padding: 10px; background: #fdfdfd;
+             grid-template-columns: repeat(5, 1fr); /* 5 columnas (Lun-Vie) */
+             gap: 10px; border: 1px solid #eee; padding: 10px; background: #fdfdfd;
              font-size: 0.85em; /* Tamaño letra pequeño */
-             line-height: 1.3; min-height: 200px; /* Altura mínima */
+             line-height: 1.3; min-height: 150px; /* Altura mínima */
         }
-        .day-column { border: 1px solid #ddd; border-radius: 4px; padding: 8px; background-color: #fff;}
+        .day-column { border: 1px solid #ddd; border-radius: 4px; padding: 8px; background-color: #fff; display: flex; flex-direction: column; } /* Flex para centrar V/F */
         .day-column h5 { margin: 0 0 8px 0; padding-bottom: 5px; border-bottom: 1px solid #eee; font-size: 0.95em; text-align: center;}
         .day-column .horas { font-weight: bold; display: block; text-align: center; margin-bottom: 5px; font-size: 0.9em;}
-        .day-column ul { list-style: none; padding: 0; margin: 0; }
-        .day-column li { margin-bottom: 4px; border-bottom: 1px dashed #eee; padding-bottom: 3px; }
-        .day-column .tipo-tarea { font-style: italic; color: #555; }
-        .day-column .tipo-imputacion { font-weight: bold; color: #333; }
-        .day-column .no-plan { color: #999; text-align: center; font-style: italic; font-size: 0.9em;}
-        .day-column.non-workday { background-color: #f8f9fa; opacity: 0.7; }
+        .day-column ul { list-style: none; padding: 0; margin: 0; flex-grow: 1; /* Ocupar espacio vertical */}
+        /* Estilos base para cada tarea LI */
+        .day-column li {
+            margin-bottom: 5px; border-radius: 3px; padding: 4px 6px;
+            border: 1px solid #eee; line-height: 1.2;
+        }
+        /* Colores específicos por tipo de tarea (nombres simplificados) */
+        .day-column li.tarea-diseno { background-color: #ffffcc; border-color: #e6e600; } /* Amarillo */
+        .day-column li.tarea-construccion { background-color: #cfe2f3; border-color: #7c9ed9; } /* Azul */
+        .day-column li.tarea-pruebas { background-color: #d9d2e9; border-color: #6a5a9e; } /* Morado */
+        .day-column li.tarea-despliegue { background-color: #d9ead3; border-color: #4d7a3a; } /* Verde */
+        /* Estilo por defecto si el tipo no coincide */
+        .day-column li.tarea-default { background-color: #f0f0f0; border-color: #ccc; }
 
-        .day-column.day-vacation {
-            background-color: #7bfda0;
-            border-color: #7cdb7c;
-        }
-        .day-column.day-holiday {
-            background-color: #ff3b3bf8;
-            border-color: #c83b3bf8;
-        }
+        .day-column .tipo-tarea { display: none; } /* Ocultar span de tipo tarea */
+        .day-column .tipo-imputacion { font-weight: bold; color: #333; font-size: 0.9em; display: block; text-align: right;}
+        .day-column .no-plan { color: #999; text-align: center; font-style: italic; font-size: 0.9em; margin-top: 10px;}
+
+        /* Estilos días no laborables */
+        .day-column.non-workday { background-color: #f8f9fa; opacity: 0.8; } /* Gris claro general */
+
+        /* Estilos V y F */
+        .day-column.day-vacation { background-color: #d2fbd1; border-color: #a3e0a2; } /* Verde notorio */
+        .day-column.day-holiday { background-color: #fde2e2; border-color: #f7b1b1; } /* Rojo notorio */
+
+         /* Estilo para texto V/F */
+         .day-column .holiday-vacation-text {
+            font-size: 1.5em; font-weight: bold; text-align: center; color: #555;
+            display: flex; align-items: center; justify-content: center;
+            flex-grow: 1; /* Ocupar espacio vertical */
+         }
+        /* --- FIN Estilos Vista Semanal --- */
     </style>
 </head>
 <body>
@@ -81,16 +97,18 @@
         <span id="status"></span>
 
         <div class="summary-section">
-            <h2>Resumen y Vista Semanal del Plan</h2>
+            <h2>Resumen y Vista Semanal del Plan (Lunes-Viernes)</h2>
             <div class="summary-details">
                 <p><strong>SDA Común:</strong> <span id="summary-sda">No importado</span></p>
                 <p><strong>Proyectos:</strong> <span id="summary-proyectos-count">0</span></p>
                 <p><strong>Días Planificados (Total):</strong> <span id="summary-dias-count">0</span></p>
             </div>
             <div class="week-navigation">
-                <button id="prev-week" disabled>ᐊ Semana Anterior</button> <span id="current-week-display">Semana (Importa CSV)</span>
-                <button id="next-week" disabled>Semana Siguiente ᐅ</button> </div>
-           <div class="weekly-plan-display" id="weekly-plan-container">
+                <button id="prev-week" disabled>ᐊ Semana Anterior</button>
+                <span id="current-week-display">Semana (Importa CSV)</span>
+                <button id="next-week" disabled>Semana Siguiente ᐅ</button>
+            </div>
+            <div class="weekly-plan-display" id="weekly-plan-container">
                 <div class="day-column non-workday"><h5>Lun</h5><span class="no-plan">Importa</span></div>
                 <div class="day-column non-workday"><h5>Mar</h5><span class="no-plan">CSV</span></div>
                 <div class="day-column non-workday"><h5>Mié</h5><span class="no-plan">para ver</span></div>
@@ -117,7 +135,6 @@
             </div>
     </template>
 
-    <script src="../scripts/shared/toast.js"></script>
-    <script src="../lib/papaparse.min.js"></script> <script src="../scripts/options.js"></script>
+    <script src="../scripts/shared/toast.js"></script> <script src="../lib/papaparse.min.js"></script> <script src="../scripts/options.js"></script>
 </body>
 </html>

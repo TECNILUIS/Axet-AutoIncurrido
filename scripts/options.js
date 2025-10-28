@@ -1,4 +1,4 @@
-// scripts/options.js v2.4 (Con Vista Semanal Lun-Vie + SDA Numérico + Plan Diario Completo)
+// scripts/options.js v2.4 (Completo con Vista Semanal coloreada y ordenada)
 
 document.addEventListener('DOMContentLoaded', () => {
     // --- ELEMENTOS DEL DOM ---
@@ -32,22 +32,21 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentConfigData = defaultConfig; // Mantiene la config completa en memoria
     let currentWeekStartDate = null; // Lunes de la semana mostrada
 
-    // Mapeo de iniciales CSV a Tipos de Tarea
+    // Mapeo de iniciales CSV a Tipos de Tarea y orden
     const tipoTareaMap = { 'az': 'Construcción', 'am': 'Diseño', 'mo': 'Pruebas', 've': 'Despliegue' };
-    const diasSemanaNombres = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']; // Para mostrar cabeceras
+    const tipoTareaOrder = { 'Diseño': 1, 'Construcción': 2, 'Pruebas': 3, 'Despliegue': 4 };
+    const diasSemanaNombres = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
     // --- FUNCIONES AUXILIARES FECHAS ---
     /** Obtiene el lunes de la semana que contiene la fecha dada */
     function getMonday(d) {
         d = new Date(d); d.setHours(0,0,0,0);
-        const day = d.getDay(); // 0=Dom, 1=Lun, ... 6=Sab
-        const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Ajuste para Dom=0 -> -6, Lun=1 -> 0...
+        const day = d.getDay(); const diff = d.getDate() - day + (day === 0 ? -6 : 1);
         return new Date(d.setDate(diff));
     }
     /** Formatea una fecha como YYYY-MM-DD localmente */
     function formatDateYYYYMMDD(date) {
         if (!date) return '';
-        // Usamos los getters locales para asegurar YYYY-MM-DD correcto
         const year = date.getFullYear();
         const month = String(date.getMonth() + 1).padStart(2, '0');
         const day = String(date.getDate()).padStart(2, '0');
@@ -72,7 +71,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Renderiza la vista semanal (Lun-Vie)
+    // Renderiza la vista semanal (Lun-Vie) con colores y orden
     function renderWeeklyPlanView() {
         if (!currentWeekStartDate || !currentConfigData || !currentConfigData.planDiario) {
              // Placeholder para 5 días
@@ -88,84 +87,89 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const weekStart = new Date(currentWeekStartDate); weekStart.setHours(0, 0, 0, 0);
-        // El texto del display muestra Lunes a Domingo
         const weekFullEnd = new Date(weekStart); weekFullEnd.setDate(weekStart.getDate() + 6);
         currentWeekDisplayEl.textContent = `Semana del ${weekStart.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })} al ${weekFullEnd.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}`;
-
-        weeklyPlanContainerEl.innerHTML = ''; // Limpiar vista
+        weeklyPlanContainerEl.innerHTML = '';
 
         const daysHeader = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie']; // Solo Lunes a Viernes
 
-        // Iterar solo 5 veces
         for (let i = 0; i < 5; i++) {
-            // Crear fecha explícitamente para evitar errores de setDate
             const dayDate = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + i);
-            dayDate.setHours(12, 0, 0, 0); // Mediodía local para evitar problemas timezone
-
-            const dayStrYYYYMMDD = formatDateYYYYMMDD(dayDate); // Formato local YYYY-MM-DD
-            const dayName = daysHeader[i]; // Lunes a Viernes
+            dayDate.setHours(12, 0, 0, 0); // Mediodía local
+            const dayStrYYYYMMDD = formatDateYYYYMMDD(dayDate);
+            const dayName = daysHeader[i];
 
             const dayColumn = document.createElement('div'); dayColumn.classList.add('day-column');
-            const horasEsperadas = (currentConfigData.horasEsperadasDiarias[dayStrYYYYMMDD] || '').toUpperCase(); // Convertir a mayúsculas
+            const horasEsperadas = (currentConfigData.horasEsperadasDiarias[dayStrYYYYMMDD] || '').toUpperCase();
             const planDelDia = currentConfigData.planDiario[dayStrYYYYMMDD] || [];
-            let horasDisplay = horasEsperadas || '-'; // Mostrar guión si está vacío
+            let horasDisplay = horasEsperadas || '-';
             let isWorkDay = !isNaN(parseInt(horasEsperadas, 10)) && parseInt(horasEsperadas, 10) > 0;
+            let specialDayText = null;
 
-            // --- LÓGICA DE CLASES CSS ---
+            // Añadir clases CSS y determinar texto especial
             if (!isWorkDay) {
-                 dayColumn.classList.add('non-workday'); // Clase general no laborable
-                 if (horasEsperadas === 'V') {
-                     dayColumn.classList.add('day-vacation'); // Verde si es Vacaciones
-                     horasDisplay = 'Vac.'; // Texto corto
-                 } else if (horasEsperadas === 'F') {
-                     dayColumn.classList.add('day-holiday'); // Rojo si es Festivo
-                     horasDisplay = 'Fest.'; // Texto corto
-                 } else if (horasEsperadas === 'S' || horasEsperadas === 'D') {
-                     // Ya tiene non-workday, no hacemos nada extra para S/D
-                     horasDisplay = horasEsperadas; // Mostrar S o D
-                 } else if (horasEsperadas === '') {
-                    horasDisplay = '-'; // Mostrar guión si está fuera de rango en CSV
-                 }
+                 dayColumn.classList.add('non-workday');
+                 if (horasEsperadas === 'V') { dayColumn.classList.add('day-vacation'); specialDayText = 'VACACIONES'; }
+                 else if (horasEsperadas === 'F') { dayColumn.classList.add('day-holiday'); specialDayText = 'FESTIVO'; }
+                 else if (horasEsperadas === '') { horasDisplay = '-'; }
+                 else { horasDisplay = horasEsperadas; } // Mantener S o D si existieran (aunque no se muestran)
             }
-             // --- FIN LÓGICA CLASES ---
 
-            // Mostrar el día y las horas/código
-            dayColumn.innerHTML = `<h5>${dayName} ${dayDate.getDate()}</h5><span class="horas">(${horasDisplay}${isWorkDay?'h':''})</span>`;
+            // Mostrar cabecera del día
+            dayColumn.innerHTML = `<h5>${dayName} ${dayDate.getDate()}</h5>`;
 
-            // Mostrar tareas solo si es día laborable
-            if (isWorkDay && planDelDia.length > 0) {
-                const taskList = document.createElement('ul');
-                // Ordenar tareas: Diseño primero, luego Construcción, luego el resto
-                planDelDia.sort((a, b) => {
-                    const order = { 'Diseño': 1, 'Construcción': 2, 'Pruebas': 3, 'Despliegue': 4 };
-                    const typeA = a.tipoTarea || '';
-                    const typeB = b.tipoTarea || '';
-                    return (order[typeA] || 99) - (order[typeB] || 99);
-                });
+            // Si es día especial (V o F), mostrar texto grande y centrado
+            if (specialDayText) {
+                dayColumn.innerHTML += `<div class="holiday-vacation-text">${specialDayText}</div>`;
+            } else {
+                // Si no es V o F, mostrar horas y tareas (o 'Sin plan')
+                dayColumn.innerHTML += `<span class="horas">(${horasDisplay}${isWorkDay?'h':''})</span>`;
 
-                planDelDia.forEach(regla => {
+                if (isWorkDay && planDelDia.length > 0) {
+                    const taskList = document.createElement('ul');
+                    // Ordenar tareas: Diseño -> Construcción -> Pruebas -> Despliegue
+                    planDelDia.sort((a, b) => {
+                        const typeA = a.tipoTarea || '';
+                        const typeB = b.tipoTarea || '';
+                        return (tipoTareaOrder[typeA] || 99) - (tipoTareaOrder[typeB] || 99);
+                    });
+
+                    planDelDia.forEach(regla => {
                     const proyecto = currentConfigData.proyectos[regla.proyectoIndex];
                     if (proyecto) {
                         const li = document.createElement('li');
+
+                        // --- CORRECCIÓN: Generar nombre de clase simple ---
+                        let tipoTareaLimpio = 'default'; // Valor por defecto
+                        if (regla.tipoTarea) {
+                            switch (regla.tipoTarea.toLowerCase()) {
+                                case 'diseño': tipoTareaLimpio = 'diseno'; break;
+                                case 'construcción': tipoTareaLimpio = 'construccion'; break;
+                                case 'pruebas': tipoTareaLimpio = 'pruebas'; break;
+                                case 'despliegue': tipoTareaLimpio = 'despliegue'; break;
+                            }
+                        }
+                        const tipoTareaClass = `tarea-${tipoTareaLimpio}`;
+                        li.classList.add(tipoTareaClass);
+                        // --- FIN CORRECCIÓN ---
+
                         li.innerHTML = `
-                            ${proyecto.codigo}:
-                            <span class="tipo-tarea">${regla.tipoTarea || '?'}</span><br/>
+                            ${proyecto.codigo}
                             <span class="tipo-imputacion">${regla.tipoImputacionHoras || '?'}</span>
                         `;
                         taskList.appendChild(li);
                     } else { console.warn(`Proyecto índice ${regla.proyectoIndex} no encontrado para ${dayStrYYYYMMDD}`); }
                 });
-                if (taskList.children.length > 0) dayColumn.appendChild(taskList);
-                else dayColumn.innerHTML += '<span class="no-plan">(Plan Inválido)</span>';
-            } else if (isWorkDay) {
-                dayColumn.innerHTML += '<span class="no-plan">(Sin plan)</span>';
-            } else if (horasDisplay !== 'Vac.' && horasDisplay !== 'Fest.' && horasDisplay !== 'S' && horasDisplay !== 'D' && horasDisplay !== '-') {
-                 // Si no es laborable pero tampoco V/F/S/D/-, mostramos el código
-                 dayColumn.innerHTML += `<span class="no-plan">${horasDisplay}</span>`;
-            }
-
+                    if (taskList.children.length > 0) dayColumn.appendChild(taskList);
+                    else dayColumn.innerHTML += '<span class="no-plan">(Plan Inválido)</span>';
+                } else if (isWorkDay) {
+                    dayColumn.innerHTML += '<span class="no-plan">(Sin plan)</span>';
+                } else if (horasDisplay !== '-') { // Mostrar código si no es Vac/Fest/Fuera Rango
+                     dayColumn.innerHTML += `<span class="no-plan">${horasDisplay}</span>`;
+                }
+            } // Fin else (no es V o F)
             weeklyPlanContainerEl.appendChild(dayColumn);
-        } // Fin del bucle for (i < 5)
+        } // Fin for
 
          // Habilitar/Deshabilitar botones
          const hasPlan = Object.keys(currentConfigData.planDiario || {}).length > 0;
@@ -174,36 +178,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     // Renderiza Proyectos y Resumen general + Vista Semanal
-    function render(config, source = 'load') { // Añadido source para saber si es carga inicial o importación
+    function render(config, source = 'load') {
         if (!config) config = defaultConfig;
-        currentConfigData = config; // Actualizar config global en memoria
-
-        renderProjectList(config.proyectos, config.sdaComun); // Renderiza Proyectos y actualiza caches
-
-        // Actualizar resumen general
+        currentConfigData = config;
+        renderProjectList(config.proyectos, config.sdaComun);
         summarySdaEl.textContent = config.sdaComun || 'No definido';
         summaryProyectosCountEl.textContent = config.proyectos?.length || 0;
         const planDaysCount = Object.keys(config.planDiario || {}).length;
         summaryDiasCountEl.textContent = planDaysCount;
-
-        // Establecer semana inicial SOLO en la carga inicial o tras importación
         if (source === 'load' || source === 'import') {
-             // Si hay plan, ir a la semana del primer día planificado, si no, a la de hoy
              const firstPlanDay = planDaysCount > 0 ? Object.keys(config.planDiario).sort()[0] : null;
-             // Asegurarse de usar mediodía para evitar problemas de timezone al crear la fecha
              const baseDate = firstPlanDay ? new Date(firstPlanDay + 'T12:00:00') : new Date();
              currentWeekStartDate = getMonday(baseDate);
         }
-        // Si source es 'save', mantenemos la semana que ya estaba visible
-
-        renderWeeklyPlanView(); // Renderizar la semana (usará currentWeekStartDate)
+        renderWeeklyPlanView();
     }
 
-
     // --- GUARDADO Y CARGA ---
-    // Simplificado: Solo guarda la configuración pasada
     function saveOptions(configToSave) {
-        // Validar estructura v2.4
         if (!configToSave || !configToSave.proyectos || configToSave.sdaComun === undefined ||
             configToSave.horasEsperadasDiarias === undefined || configToSave.planDiario === undefined) {
              if(window.showToast) window.showToast('Error: Configuración inválida V2.4.', 'error');
@@ -211,22 +203,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         chrome.storage.sync.set({ configV2: configToSave }, () => {
             if (window.showToast) window.showToast('¡Configuración guardada!', 'success');
-            // FIX IMPORTANTE: Llamar a render DESPUÉS de guardar para asegurar que currentConfigData se actualice
-            // y para que la vista semanal refleje los datos guardados.
-            render(configToSave, 'save'); // Pasamos 'save' para no resetear la semana si ya estaba definida
+            render(configToSave, 'save'); // Renderizar DESPUÉS de guardar
         });
     }
-     // Carga la configuración y renderiza
      function restoreOptions() {
         chrome.storage.sync.get({ configV2: defaultConfig }, items => {
-            render(items.configV2 || defaultConfig, 'load'); // Pasar 'load' para inicializar semana
+            render(items.configV2 || defaultConfig, 'load');
         });
     }
 
     // --- IMPORTAR / EXPORTAR JSON ---
     function exportConfig() {
         chrome.storage.sync.get({ configV2: defaultConfig }, items => {
-            const configToExport = items.configV2 || defaultConfig; // Exportar config actual o default
+            const configToExport = items.configV2 || defaultConfig;
             const dataStr = JSON.stringify(configToExport, null, 2);
             const dataBlob = new Blob([dataStr], { type: 'application/json' });
             const url = URL.createObjectURL(dataBlob);
@@ -243,10 +232,9 @@ document.addEventListener('DOMContentLoaded', () => {
          reader.onload = (e) => {
              try {
                  const importedConfig = JSON.parse(e.target.result);
-                 // Validar estructura v2.4
                  if (importedConfig.proyectos && importedConfig.sdaComun !== undefined &&
                      importedConfig.horasEsperadasDiarias !== undefined && importedConfig.planDiario !== undefined) {
-                     saveOptions(importedConfig); // Guardar Y renderizar (render pondrá semana correcta)
+                     saveOptions(importedConfig); // Guardar Y renderizar
                      if (window.showToast) window.showToast('¡Config JSON importada y guardada!', 'success');
                  } else { throw new Error('Formato V2.4 incorrecto.'); }
              } catch (error) { if (window.showToast) window.showToast(`Error import JSON: ${error.message}`, 'error'); }
@@ -254,7 +242,6 @@ document.addEventListener('DOMContentLoaded', () => {
          };
          reader.readAsText(file);
      }
-
 
     // --- LÓGICA: IMPORTAR TODO DESDE CSV ---
     function parseCsvAndExtractData(file, employeeId) {
@@ -264,21 +251,16 @@ document.addEventListener('DOMContentLoaded', () => {
             complete: (results) => {
                 try {
                     console.log("CSV Parseado:", results.data);
-                    // Esta función ahora devuelve: { proyectos, sdaComun (numérico), horasEsperadas, planDiario }
                     const extractedData = findEmployeeDataAndPlanInCsv(results.data, employeeId.trim().toUpperCase());
                     if (!extractedData || !extractedData.proyectos || extractedData.proyectos.length === 0) {
                         if (window.showToast) window.showToast(`No se encontraron datos válidos para ID ${employeeId}.`, 'error', 5000); return;
                     }
                     console.log("Datos extraídos:", extractedData);
                     const newConfig = {
-                        proyectos: extractedData.proyectos,
-                        sdaComun: extractedData.sdaComun, // Ya es numérico
-                        horasEsperadasDiarias: extractedData.horasEsperadas,
-                        planDiario: extractedData.planDiario,
-                        // Asegurar que reglasPlanificacion (obsoleto) esté vacío o ausente
-                        // reglasPlanificacion: [] // Opcional, dependiendo de si content.js lo necesita vacío
+                        proyectos: extractedData.proyectos, sdaComun: extractedData.sdaComun,
+                        horasEsperadasDiarias: extractedData.horasEsperadas, planDiario: extractedData.planDiario,
                     };
-                    saveOptions(newConfig); // Guardar Y renderizar (render pondrá semana correcta)
+                    saveOptions(newConfig); // Guardar Y renderizar
                     if (window.showToast) window.showToast(`¡${extractedData.proyectos.length} proyectos y plan diario importados!`, 'success', 5000);
                 } catch (error) {
                     console.error("Error procesando CSV:", error);
@@ -371,16 +353,16 @@ document.addEventListener('DOMContentLoaded', () => {
                         else if (tipoTarea) tipoImputacionHoras = 'patron';
                         // Ignorar V y F aquí, se manejan por horasEsperadasDiarias
 
-                        // Añadir al plan solo si se identificó un tipo de imputación y tarea
+                        // Añadir al plan solo si se identificó un tipo de imputación y tarea válidos
                         if (tipoTarea && tipoImputacionHoras) {
                             if (!planDiario[dateStr]) planDiario[dateStr] = [];
-                            // Evitar duplicados si la celda tiene '1Az', por ejemplo
+                            // Evitar duplicados si la celda tiene '1Az', etc.
                             if (!planDiario[dateStr].some(p => p.proyectoIndex === proyectoIndex)) {
                                  planDiario[dateStr].push({ proyectoIndex, tipoTarea, tipoImputacionHoras });
                             }
                         } else if (tipoImputacionHoras === 'fija' && !tipoTarea) {
-                             // Lógica si solo hay '1'
-                             tipoTarea = 'Construcción'; // Asunción (REVISAR)
+                             // Lógica si solo hay '1' - Asunción temporal
+                             tipoTarea = 'Construcción'; // (REVISAR ESTA ASUNCIÓN)
                              console.warn(`[CSV Parser] ${dateStr}, Prj ${codigo}: '1' sin tipo. Asumiendo ${tipoTarea}.`);
                              if (!planDiario[dateStr]) planDiario[dateStr] = [];
                              if (!planDiario[dateStr].some(p => p.proyectoIndex === proyectoIndex)) {
@@ -407,6 +389,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const horasEsperadas = {};
         if (horasRow.length > 0) {
              for (const colIndex in dateColumns) {
+                 // Asegurarse de que el índice de columna existe en la fila de horas
                  if (colIndex < horasRow.length && horasRow[colIndex] !== undefined) {
                      // Guardar el valor exacto (puede ser '9', '7', 'V', 'F', 'S', 'D')
                      horasEsperadas[dateColumns[colIndex]] = (horasRow[colIndex] || '').trim();
