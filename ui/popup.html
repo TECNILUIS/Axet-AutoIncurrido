@@ -1,14 +1,19 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <style>
-        body { width: 200px; text-align: center; }
-        button { width: 80%; padding: 15px; font-size: 16px; font-weight: bold; cursor: pointer; }
-    </style>
-</head>
 <body>
     <h3>Asistente de Horas</h3>
-    <button id="runScript">Incurrir Tareas</button>
+
+    <button id="runScript" style="margin-bottom: 15px;">Incurrir Tareas Hoy</button>
+
+    <hr>
+
+    <h4 style="margin-bottom: 5px;">Borrar Rango</h4>
+    <div style="font-size: 12px; margin-bottom: 10px;">
+        <label for="fechaInicio">Inicio:</label>
+        <input type="date" id="fechaInicio" name="fechaInicio" style="width: 120px; margin-right: 5px;">
+        <br>
+        <label for="fechaFin">Fin:</label>
+        <input type="date" id="fechaFin" name="fechaFin" style="width: 120px; margin-top: 5px;">
+    </div>
+    <button id="deleteScript" style="background-color: #dc3545; width: 80%;">Borrar Imputaciones</button>
+
     <script src="../scripts/popup.js"></script>
 </body>
-</html>
