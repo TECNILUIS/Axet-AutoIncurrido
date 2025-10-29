@@ -1,207 +1,200 @@
-// scripts/modules/incurrir.js
+// scripts/modules/incurrir.js v2.5 FINAL (Lee Horas Pre-calculadas)
 
 /**
- * Obtiene la lista de tareas a incurrir para una fecha dada,
- * aplicando la lógica de reglas de planificación (v2.3).
- * ESTA FUNCIÓN NECESITA SER COMPLETADA CON EL ALGORITMO FINAL.
- * @param {Date} fecha - La fecha para la que calcular las tareas.
- * @param {object} config - El objeto de configuración v2.3 cargado.
+ * OBTIENE las tareas y tiempos PRE-CALCULADOS para incurrir en una fecha específica.
+ * Lee directamente del planDiario guardado en la configuración V2.5.
+ * @param {Date} fecha - Objeto Date del día a obtener (medianoche local).
+ * @param {object} config - El objeto de configuración v2.5 {proyectos, sdaComun, horasEsperadasDiarias, planDiario}.
  * @returns {Array<object>} - Lista de tareas a incurrir { nombre, codigoProyecto, horas, minutos }
  */
-function getTareasParaDia_v2_3(fecha, config) {
-    console.log("[Incurrir] Calculando tareas para:", fecha.toISOString().split('T')[0]);
-    // Asegurarse de que las dependencias estén disponibles
-    if (typeof requestPageToast !== 'function') { // Asumiendo que requestPageToast está en content.js o utils.js
-        console.error("[Incurrir] requestPageToast no está definido.");
-        // Podríamos lanzar un error o usar console.log como fallback
-    }
+function getTareasParaDia_v2_3(fecha, config) { // Mantenemos nombre por compatibilidad histórica
+    // Asegurar fecha válida y normalizada
+    fecha = new Date(fecha);
+    fecha.setHours(0, 0, 0, 0);
 
-    const todayStr = fecha.toISOString().split('T')[0]; // Formato YYYY-MM-DD
-    const diaSemana = fecha.getDay(); // 0 (Dom) a 6 (Sab)
-
-    // 1. Obtener Horas Totales del Día
-    const horasEsperadasHoyStr = config.horasEsperadasDiarias ? config.horasEsperadasDiarias[todayStr] : '0';
-    // Interpretar S, D, V, F como no laborables
-    if (!horasEsperadasHoyStr || isNaN(parseInt(horasEsperadasHoyStr, 10))) {
-        console.log(`[Incurrir] Día no laborable o sin horas definidas: ${horasEsperadasHoyStr}`);
-        if (typeof requestPageToast === 'function') requestPageToast(`Día ${todayStr} no laborable o sin horas esperadas definidas.`);
-         return [];
-    }
-    const horasTotalesNum = parseInt(horasEsperadasHoyStr, 10);
-    let minutosTotalesDia = horasTotalesNum * 60;
-    console.log(`[Incurrir] Horas Totales para ${todayStr}: ${horasTotalesNum}h (${minutosTotalesDia} min)`);
-
-    // 2. Encontrar Reglas de Planificación Activas para hoy
-    const reglasActivasHoy = (config.reglasPlanificacion || []).filter(regla => {
-        try {
-            const inicio = new Date(regla.inicio + 'T00:00:00');
-            const fin = new Date(regla.fin + 'T00:00:00');
-            // Asegurarse de que las fechas sean válidas y el día de hoy esté en el rango
-            return !isNaN(inicio) && !isNaN(fin) && fecha >= inicio && fecha <= fin;
-        } catch (e) { return false; }
-    });
-    console.log(`[Incurrir] Reglas activas hoy (${reglasActivasHoy.length}):`, reglasActivasHoy);
-
-    if (reglasActivasHoy.length === 0) {
-        console.log("[Incurrir] No hay reglas de asignación activas para hoy.");
+    // Verificar dependencias config y funciones auxiliares
+    // Asumimos que formatDateYYYYMMDD y requestPageToast están disponibles globalmente (inyectadas antes)
+    if (typeof formatDateYYYYMMDD !== 'function') {
+         console.error("[Incurrir v2.5] ERROR CRÍTICO: Falta función auxiliar formatDateYYYYMMDD.");
+         // Intentar mostrar alerta como último recurso
+         try { if(typeof requestPageToast === 'function') requestPageToast("Error: Falta formatDateYYYYMMDD", 'error'); else alert("Error: Falta formatDateYYYYMMDD"); } catch(e){}
+         return []; // No podemos continuar
+     }
+     if (!config || !config.proyectos || !config.planDiario) {
+        console.error("[Incurrir v2.5] Configuración inválida o incompleta pasada a getTareasParaDia.");
+        if (typeof requestPageToast === 'function') requestPageToast("Error: Configuración interna inválida.", 'error');
         return [];
     }
+    // tipoTareaOrder debe estar disponible globalmente o definido aquí
+    const tipoTareaOrderLocal = typeof tipoTareaOrder !== 'undefined' ? tipoTareaOrder : { 'Diseño': 1, 'Construcción': 2, 'Pruebas': 3, 'Despliegue': 4 };
 
-    // --- AQUÍ VA EL ALGORITMO COMPLETO DE CÁLCULO (FIJA + PATRÓN SEMANAL) ---
-    // ... (Implementación pendiente basada en la discusión anterior) ...
-    // ...
-    // ... Esto devolverá un array como: [{ proyectoIndex: 0, horasFinales: 1, minutosFinales: 0}, { proyectoIndex: 2, horasFinales: 7, minutosFinales: 0}]
+    const todayStr = formatDateYYYYMMDD(fecha); // Formato YYYY-MM-DD local
+    console.log(`[Incurrir v2.5] Obteniendo plan pre-calculado para: ${todayStr}`);
 
-    // --- Placeholder mientras implementamos el algoritmo: ---
-     console.warn("[Incurrir] ALGORITMO DE CÁLCULO DE HORAS (v2.3) PENDIENTE DE IMPLEMENTAR.");
-     // Simplemente devolvemos la primera regla activa con 1 hora como ejemplo temporal
-     const tareasCalculadas = [];
-     if (reglasActivasHoy.length > 0) {
-         const primeraRegla = reglasActivasHoy[0];
-         const proyecto = config.proyectos[primeraRegla.proyectoIndex];
-         if (proyecto) {
-             tareasCalculadas.push({
-                 nombre: primeraRegla.tipoTarea, // Nombre viene de la regla
-                 codigoProyecto: proyecto.codigo, // Código viene del proyecto
-                 horas: "1", // Placeholder
-                 minutos: "0" // Placeholder
-             });
-         }
-     }
-     console.log("[Incurrir] Tareas calculadas (placeholder):", tareasCalculadas);
-     return tareasCalculadas;
-    // --- Fin Placeholder ---
+    // 1. Obtener el plan pre-calculado para el día
+    const planCalculadoDelDia = config.planDiario[todayStr] || [];
 
+    // 2. Verificar si hay algo que hacer
+    if (planCalculadoDelDia.length === 0) {
+        console.log(`[Incurrir v2.5] No hay plan pre-calculado para ${todayStr}. Verificando día laborable...`);
+        const horasEsperadasHoyStr = (config.horasEsperadasDiarias[todayStr] || '').toUpperCase();
+        if (horasEsperadasHoyStr && !isNaN(parseInt(horasEsperadasHoyStr, 10)) && parseInt(horasEsperadasHoyStr, 10) > 0) {
+            console.warn(`[Incurrir v2.5] Día ${todayStr} laborable (${horasEsperadasHoyStr}h) pero sin tareas en planDiario.`);
+             if (typeof requestPageToast === 'function') requestPageToast(`Día ${todayStr} (${horasEsperadasHoyStr}h) sin tareas planificadas.`, 'warning');
+        } else {
+             console.log(`[Incurrir v2.5] Día ${todayStr} no laborable o 0h.`);
+        }
+        return []; // No hay tareas
+    }
 
-    /*
-    // --- LÓGICA FINAL (cuando el algoritmo esté implementado) ---
-    const tareasCalculadasConTiempo = calcularHorasConPatron(fecha, horasTotalesNum, reglasActivasHoy, config.horasEsperadasDiarias);
-    // tareasCalculadasConTiempo sería: [{ proyectoIndex: 0, horas: 1, minutos: 0 }, ...]
+    // 3. Formatear la salida para incurrirTareas (leer directamente horas/minutos)
+    const tareasParaIncurrir = [];
+    planCalculadoDelDia.forEach(tareaCalc => { // tareaCalc = { proyectoIndex, tipoTarea, horas, minutos }
+        // Validar datos de la tarea calculada
+        if (tareaCalc.proyectoIndex === undefined || !tareaCalc.tipoTarea || tareaCalc.horas === undefined || tareaCalc.minutos === undefined) {
+            console.warn(`[Incurrir v2.5] Tarea en planDiario para ${todayStr} con formato incorrecto:`, tareaCalc);
+            return; // Saltar esta tarea
+        }
 
-    // Mapear resultado al formato final esperado por incurrirTareas
-    const tareasParaIncurrir = tareasCalculadasConTiempo.map(calc => {
-        const regla = reglasActivasHoy.find(r => r.proyectoIndex === calc.proyectoIndex); // Necesitamos la regla para el tipoTarea
-        const proyecto = config.proyectos[calc.proyectoIndex];
-        if (!regla || !proyecto) return null; // Seguridad
-        return {
-            nombre: regla.tipoTarea, // El nombre de Axet es el Tipo/Etapa
-            codigoProyecto: proyecto.codigo,
-            horas: String(calc.horas),
-            minutos: String(calc.minutos)
-        };
-    }).filter(t => t !== null); // Filtrar posibles nulos
+        const proyecto = config.proyectos[tareaCalc.proyectoIndex];
 
-    console.log("[Incurrir] Tareas finales para incurrir:", tareasParaIncurrir);
+        // Añadir solo si el proyecto existe Y tiene tiempo asignado
+        if (proyecto && (parseInt(tareaCalc.horas, 10) > 0 || parseInt(tareaCalc.minutos, 10) > 0)) {
+            tareasParaIncurrir.push({
+                nombre: tareaCalc.tipoTarea,       // Nombre = Etapa pre-calculada
+                codigoProyecto: proyecto.codigo,   // Código del proyecto
+                horas: String(tareaCalc.horas),    // Horas pre-calculadas
+                minutos: String(tareaCalc.minutos) // Minutos pre-calculados
+            });
+        } else if (!proyecto) {
+             console.error(`[Incurrir v2.5] Proyecto índice ${tareaCalc.proyectoIndex} no encontrado al formatear salida para ${todayStr}.`);
+        }
+    });
+
+    // Ordenar salida final (Diseño -> Construcción -> ...)
+    tareasParaIncurrir.sort((a, b) => {
+        const typeA = a.nombre || ''; const typeB = b.nombre || '';
+        return (tipoTareaOrderLocal[typeA] || 99) - (tipoTareaOrderLocal[typeB] || 99);
+    });
+
+    console.log(`[Incurrir v2.5] Tareas pre-calculadas listas para ${todayStr}:`, tareasParaIncurrir);
     return tareasParaIncurrir;
-    */
 }
 
 
 /**
- * Función principal para imputar las tareas calculadas para un día.
+ * Función principal para imputar las tareas preparadas para un día.
  * @param {Date} fechaParaIncurrir - La fecha en la que se deben incurrir las tareas.
- * @param {Array<object>} tareasAIncurrir - Lista de tareas calculada por getTareasParaDia_v2_3.
+ * @param {Array<object>} tareasAIncurrir - Lista preparada por getTareasParaDia_v2_3.
  */
 async function incurrirTareas(fechaParaIncurrir, tareasAIncurrir) {
-    // Asegurarse de que las dependencias estén disponibles
+    // Asegurar dependencias (inyectadas globalmente)
     if (typeof requestPageToast !== 'function' || typeof getHorasActuales !== 'function' || typeof sleep !== 'function' ||
-        typeof waitForElement !== 'function' || typeof waitForCondition !== 'function') {
+        typeof waitForElement !== 'function' || typeof waitForCondition !== 'function' || typeof findElementByText !== 'function') {
          console.error("[Incurrir] Faltan funciones auxiliares (toast, utils).");
-         if(typeof requestPageToast === 'function') requestPageToast("Error interno: Faltan funciones auxiliares.", "error");
-         return;
+         if(typeof requestPageToast === 'function') requestPageToast("Error interno: Faltan funciones.", "error"); return;
      }
 
-    console.log(`[Incurrir] Iniciando proceso para ${fechaParaIncurrir.toLocaleDateString()} con ${tareasAIncurrir.length} tareas.`);
+    console.log(`[Incurrir] Iniciando imputación en Axet para ${fechaParaIncurrir.toLocaleDateString()} (${tareasAIncurrir.length} tareas pre-calculadas).`);
 
     if (tareasAIncurrir.length === 0) {
-        console.log("[Incurrir] No hay tareas para incurrir hoy.");
-        // No mostramos toast aquí, getTareasParaDia ya lo haría si es finde, etc.
-        return;
+        console.log("[Incurrir] No hay tareas calculadas para imputar."); return;
     }
 
-    // Comprobar si ya se ha incurrido suficiente tiempo (sin cambios)
-    const totalMinutesToIncur = tareasAIncurrir.reduce((acc, tarea) => {
-        const horas = parseInt(tarea.horas, 10) || 0;
-        const minutos = parseInt(tarea.minutos, 10) || 0;
-        return acc + (horas * 60) + minutos;
-    }, 0);
+    // Comprobar si ya se ha incurrido suficiente
     const currentHoursText = getHorasActuales();
     const [currentH, currentM] = currentHoursText.split(':').map(n => parseInt(n, 10));
     const currentMinutesIncurred = (currentH * 60) + currentM;
+    const totalMinutesPlanned = tareasAIncurrir.reduce((acc, tarea) => {
+        return acc + (parseInt(tarea.horas, 10) || 0) * 60 + (parseInt(tarea.minutos, 10) || 0);
+    }, 0);
 
-    if (currentMinutesIncurred >= totalMinutesToIncur) {
-        requestPageToast(`Ya se han incurrido ${currentHoursText} horas o más. Proceso detenido.`, "info");
-        return;
+    if (currentMinutesIncurred >= totalMinutesPlanned && totalMinutesPlanned > 0) {
+        requestPageToast(`Ya incurrido ${currentHoursText}. Plan: ${Math.floor(totalMinutesPlanned/60)}h ${totalMinutesPlanned%60}m. Detenido.`, "info", 6000);
+        console.log(`[Incurrir] Imputación ya realizada (${currentMinutesIncurred} >= ${totalMinutesPlanned}).`); return;
     }
+     console.log(`[Incurrir] Incurridos: ${currentMinutesIncurred}. Planificados: ${totalMinutesPlanned}. Procediendo...`);
 
     let tareaCounter = 1;
     for (const tarea of tareasAIncurrir) {
-         // Validar que la tarea tenga horas > 0 antes de intentar incurrirla
          const taskMinutes = (parseInt(tarea.horas, 10) || 0) * 60 + (parseInt(tarea.minutos, 10) || 0);
          if (taskMinutes <= 0) {
-             console.log(`[Incurrir] Saltando Tarea ${tareaCounter} (${tarea.nombre} - ${tarea.codigoProyecto}) porque tiene 0 horas.`);
-             tareaCounter++;
-             continue;
+             console.log(`[Incurrir] Saltando Tarea ${tareaCounter} (${tarea.nombre} - ${tarea.codigoProyecto}): 0 min.`);
+             tareaCounter++; continue;
          }
 
         console.log(`\n[Incurrir] --- TAREA ${tareaCounter}/${tareasAIncurrir.length}: ${tarea.nombre} (${tarea.codigoProyecto}) - ${tarea.horas}h ${tarea.minutos}m) ---`);
         const horasAntesDeIncurrir = getHorasActuales();
 
         try {
+            // --- Interacción con la UI de Axet ---
             const dropdown = await waitForElement('.formio-component-select .choices');
             const selectionBox = dropdown.querySelector('.choices__list--single');
+            if (dropdown.classList.contains('is-open')) { if (dropdown.classList.contains('is-open')) dropdown.click(); await sleep(200); }
             dropdown.dispatchEvent(new MouseEvent('click', { view: window, bubbles: true, cancelable: true }));
-
-            // Usamos findElementByText de utils.js
+            console.log("[Incurrir] Dropdown abierto.");
             const textosABuscar = [`[${tarea.nombre}]`, tarea.codigoProyecto];
+            await sleep(300);
             const opcionSeleccionar = await waitForElement('div.choices__item[role="option"]', textosABuscar, dropdown);
-
+            console.log(`[Incurrir] Opción encontrada: ${opcionSeleccionar.textContent.substring(0,60)}...`);
             opcionSeleccionar.dispatchEvent(new MouseEvent('mousedown', { view: window, bubbles: true, cancelable: true }));
             opcionSeleccionar.dispatchEvent(new MouseEvent('click', { view: window, bubbles: true, cancelable: true }));
-
-            await waitForCondition(() => selectionBox.textContent.trim().includes(tarea.nombre), 5000, `selección de '${tarea.nombre}'`);
+            console.log("[Incurrir] Opción seleccionada.");
+            await waitForCondition(() => (selectionBox.textContent || '').trim().includes(tarea.codigoProyecto), 5000, `selección de '${tarea.codigoProyecto}'`);
+            console.log(`[Incurrir] Selección confirmada: ${selectionBox.textContent.substring(0,60)}...`);
 
             const hoursInput = document.querySelector('input[name="data[container1][horas]"]');
-            hoursInput.value = tarea.horas;
-            hoursInput.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
-
+            hoursInput.value = tarea.horas; hoursInput.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
             const minutesInput = document.querySelector('input[name="data[container1][minutos]"]');
-            minutesInput.value = tarea.minutos;
-            minutesInput.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
-
+            minutesInput.value = tarea.minutos; minutesInput.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+            console.log(`[Incurrir] Valores ${tarea.horas}h ${tarea.minutos}m introducidos.`);
             await sleep(300);
 
-            const incurrirButton = document.querySelector('button.incurrirBoton');
+            const incurrirButton = await waitForElement('button.incurrirBoton');
+            console.log("[Incurrir] Pulsando 'Incurrir'...");
             incurrirButton.dispatchEvent(new MouseEvent('mousedown', { view: window, bubbles: true, cancelable: true }));
             incurrirButton.dispatchEvent(new MouseEvent('click', { view: window, bubbles: true, cancelable: true }));
 
+            console.log("[Incurrir] Esperando actualización contador...");
             await waitForCondition(() => {
                 const horasActuales = getHorasActuales();
                 return horasActuales !== horasAntesDeIncurrir && /^\d{2}:\d{2}$/.test(horasActuales);
-            }, 10000, "actualización del contador de horas");
-
-            console.log(`[Incurrir] [ÉXITO] Tarea ${tareaCounter} incurrida.`);
-
+            }, 10000, "actualización contador post-incurrido");
+            console.log(`[Incurrir] [ÉXITO] Tarea ${tareaCounter} incurrida. Horas ahora: ${getHorasActuales()}`);
+            // --- Fin Interacción ---
         } catch (error) {
-             console.error(`[Incurrir] ERROR al procesar la tarea ${tareaCounter} (${tarea.nombre} - ${tarea.codigoProyecto}):`, error);
-             requestPageToast(`Error al incurrir tarea: ${tarea.nombre} (${tarea.codigoProyecto}). ${error.message}`, "error", 6000);
-             // Decidimos si continuar con la siguiente tarea o detener todo el proceso
-             // Por ahora, continuamos
-             // return; // Descomentar para detener en caso de error
+             console.error(`[Incurrir] ERROR Tarea ${tareaCounter} (${tarea.nombre} - ${tarea.codigoProyecto}):`, error);
+             requestPageToast(`Error incurrir Tarea ${tareaCounter}: ${tarea.nombre}. ${error.message}`, "error", 6000);
+             // Continuamos con la siguiente
         }
-
         tareaCounter++;
-    }
-    await sleep(300);
-    requestPageToast("¡Proceso de incurrido completado!", "success");
-}
-console.log("incurrir.js loaded"); // Para depuración
+    } // Fin for
 
-// --- Función placeholder para el algoritmo V2.3 ---
-function calcularHorasConPatron(fecha, horasTotalesNum, reglasActivasHoy, horasEsperadasDiariasConfig) {
-     console.warn("Función calcularHorasConPatron NO IMPLEMENTADA");
-     // Aquí iría toda la lógica de calcular días laborables de la semana,
-     // determinar la posición del día, aplicar el patrón, etc.
-     // Devolvería: [{ proyectoIndex: 0, horas: 1, minutos: 0 }, ...]
-     return [];
- }
+    await sleep(300);
+    const finalHoursText = getHorasActuales();
+    const [finalH, finalM] = finalHoursText.split(':').map(n => parseInt(n, 10));
+    const finalMinutesIncurred = (finalH * 60) + finalM;
+    if (Math.abs(finalMinutesIncurred - totalMinutesPlanned) <= 1) { // Permitir +/- 1 min
+         requestPageToast("¡Proceso de incurrido completado!", "success");
+         console.log(`[Incurrir] Proceso OK. Total final: ${finalHoursText}. Plan: ${totalMinutesPlanned} min.`);
+    } else {
+         requestPageToast(`¡AVISO! Total (${finalHoursText}) difiere del plan (${Math.floor(totalMinutesPlanned/60)}h ${totalMinutesPlanned%60}m).`, "warning", 8000);
+         console.warn(`[Incurrir] AVISO. Total final: ${finalHoursText} (${finalMinutesIncurred} min). Plan: ${totalMinutesPlanned} min.`);
+    }
+}
+
+// --- Asegúrate de tener estas funciones/variables auxiliares disponibles globalmente ---
+// (Definidas en utils.js e inyectadas antes)
+// const tipoTareaOrder = { 'Diseño': 1, 'Construcción': 2, 'Pruebas': 3, 'Despliegue': 4 }; // Necesario globalmente
+// function formatDateYYYYMMDD(date) { /* ... */ } // Necesario globalmente
+// function getHorasActuales() { /* ... */ }
+// function sleep(ms) { /* ... */ }
+// function findElementByText(selector, texts, parent) { /* ... */ }
+// function waitForElement(selector, text, parent, timeout) { /* ... */ }
+// function waitForCondition(conditionFn, timeout, desc) { /* ... */ }
+// function requestPageToast(message, type, duration) { /* ... */ }
+
+// Exportar funciones si se usan módulos ES6 (no aplica aquí por inyección simple)
+// export { getTareasParaDia_v2_3, incurrirTareas };
+
+console.log("incurrir.js loaded v2.5 FINAL");

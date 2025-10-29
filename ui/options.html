@@ -9,19 +9,83 @@
         body { display: flex; align-items: flex-start; justify-content: center; font-family: sans-serif; padding: 20px; background: #fafafa; }
         .options-container { width: 100%; max-width: 900px; /* Ancho para la semana */ background: white; padding: 20px; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,0.06); }
         h1, h2 { border-bottom: 2px solid #eee; padding-bottom: 8px; margin-bottom: 15px;}
-        input[type="text"] { padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
-        button { border: none; border-radius: 4px; cursor: pointer; color: white; padding: 8px 12px; font-size: 14px; }
+        input[type="text"] { padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; box-sizing: border-box;}
+        button { border: none; border-radius: 4px; cursor: pointer; color: white; padding: 8px 12px; font-size: 14px; box-sizing: border-box;} /* Added box-sizing */
         .list-container { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; max-height: 150px; /* Altura reducida */ overflow-y: auto; border: 1px solid #eee; padding: 10px; border-radius: 5px; background: #f9f9f9;}
         .rule-row { display: grid; gap: 10px; align-items: center; border: 1px solid #ccc; padding: 8px 10px; border-radius: 5px; background: white;}
         #project-list .rule-row { grid-template-columns: 1fr auto; } /* Código, SDA Display */
         #project-list input[type="text"] { background-color: #f0f0f0; border-color: #e0e0e0; cursor: not-allowed;} /* Estilo readonly */
         #project-list .project-sda-display { font-size: 0.9em; color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .main-controls { display:flex; flex-wrap: wrap; align-items: center; gap: 15px; margin-top: 25px; }
-        .main-controls button { flex: 1; padding: 12px 14px; font-size: 15px; min-width: 150px; /* Ancho mínimo botones */ }
-        .main-controls button#save { display: none; /* Oculto por defecto */ flex-basis: 100%; order: 4; background-color: #008CBA; } /* Botón Guardar oculto */
-        .main-controls button.secondary { background-color: #007bff; }
-        .main-controls button.secondary.alt { background-color: #6c757d; }
-        .csv-import-controls { flex-grow: 1; display: flex; gap: 8px; border: 1px solid #ccc; padding: 8px; border-radius: 5px; min-width: 300px; /* Ancho mínimo para import CSV */ }
+        
+        
+        /* --- ESTILOS CONTROLES PRINCIPALES (Grid 2 filas explícitas) --- */
+        .main-controls {
+            display: grid;
+            grid-template-columns: 2fr 2fr 1fr; /* Proporción ~40% 40% 20% */
+            gap: 10px;
+            margin-top: 25px;
+            align-items: stretch;
+        }
+
+        /* Controles CSV: Fila 1 completa */
+        .csv-import-controls {
+            grid-column: 1 / 4; /* Span all columns */
+            grid-row: 1;        /* Fila 1 */
+            /* Estilos internos Flexbox */
+            display: flex;
+            gap: 8px; /* Espacio entre input y botón */
+            border: 1px solid #ccc; padding: 8px; border-radius: 5px;
+            align-items: center;
+            box-sizing: border-box;
+        }
+        /* --- AJUSTE DE ANCHO INPUT/BOTÓN CSV --- */
+        .csv-import-controls input#employee-id {
+            flex-basis: 40%; /* Input ocupa 40% */
+            flex-grow: 0;   /* No crece más allá del 40% */
+            flex-shrink: 0; /* No se encoge */
+            min-width: 100px; /* Ancho mínimo razonable */
+        }
+        .csv-import-controls button#import-csv-btn {
+            flex-basis: 60%; /* Botón ocupa 60% */
+            flex-grow: 0;
+            flex-shrink: 0;
+            /* Estilos de botón (padding, etc.) se heredan o se ponen aquí */
+            padding: 10px 14px; font-size: 14px; 
+            background-color: #00ae54;
+            white-space: nowrap; /* Evitar que el texto se parta */
+            text-align: center; /* Centrar texto */
+        }
+
+        /* Botones Fila 2 */
+        #export-btn {
+            grid-column: 1 / 2; /* Columna 1 */
+            grid-row: 2;        /* ***** ASIGNAR A FILA 2 ***** */
+            background-color: #007bff; /* Azul */
+        }
+        #import-json-btn {
+            grid-column: 2 / 3; /* Columna 2 */
+            grid-row: 2;        /* ***** ASIGNAR A FILA 2 ***** */
+            background-color: #6c757d; /* Gris */
+        }
+        #clear-all-config-btn {
+            grid-column: 3 / 4; /* Columna 3 */
+            grid-row: 2;        /* ***** ASIGNAR A FILA 2 ***** */
+            background-color: #dc3545; /* Rojo */
+            font-size: 13px;
+        }
+
+        /* Estilos comunes botones Fila 2 */
+        #export-btn, #import-json-btn, #clear-all-config-btn {
+            padding: 12px 10px; font-size: 14px; text-align: center;
+            width: 100%; box-sizing: border-box;
+        }
+
+        /* Botón Guardar (oculto, iría en Fila 3 si fuera visible) */
+        #save { display: none; grid-column: 1 / -1; grid-row: 3; background-color: #008CBA; }
+
+        /* --- FIN ESTILOS CONTROLES --- */
+
+
         #status { display: block; width: 100%; text-align: center; margin-top: 15px; font-weight: bold; min-height: 1.2em; /* Espacio para mensajes */}
 
         /* --- ESTILOS VISTA SEMANAL CON COLORES --- */
@@ -84,15 +148,17 @@
         <p>Puedes usar **"Exportar Config (.json)"** para hacer una copia de seguridad de la configuración procesada.</p>
 
         <div class="main-controls">
-             <button id="save">Guardar Cambios</button>
-             <button id="export-btn" class="secondary">Exportar Config (.json)</button>
              <div class="csv-import-controls">
                  <input type="text" id="employee-id" placeholder="Tu ID (ej. T012345)" style="flex-grow: 1;">
-                 <button id="import-csv-btn" class="secondary alt" style="white-space: nowrap;">Importar Plan (CSV)</button>
+                 <button id="import-csv-btn" style="white-space: nowrap;">Importar Plan (CSV)</button>
                  <input type="file" id="import-csv-file" accept=".csv,.CSV" style="display: none;">
+                 <!-- Hidden file input for JSON import restored so the Import JSON button works -->
+                 <input type="file" id="import-json-file" accept=".json,application/json" style="display: none;">
              </div>
-             <button id="import-json-btn" class="secondary alt">Importar Config (.json)</button>
-             <input type="file" id="import-json-file" accept=".json" style="display: none;">
+             <button id="export-btn">Exportar Config (.json)</button>
+             <button id="import-json-btn">Importar Config (.json)</button>
+             <button id="clear-all-config-btn">Borrar Config</button>
+             <button id="save">Guardar Cambios</button>
         </div>
         <span id="status"></span>
 
