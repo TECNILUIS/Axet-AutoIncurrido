@@ -31,7 +31,7 @@
             const config = storage.configV2;
 
             // Validar la estructura esperada para v2.3
-            if (!config || !config.proyectos || !config.reglasPlanificacion || config.sdaComun === undefined || config.horasEsperadasDiarias === undefined) {
+            if (!config || !config.proyectos || !config.planDiario || config.sdaComun === undefined || config.horasEsperadasDiarias === undefined) {
                  // Podríamos intentar migrar de claves antiguas aquí si quisiéramos
                  console.error("[Content Script] Configuración V2 (configV2) inválida o no encontrada en storage:", storage);
                  throw new Error("Configuración V2 inválida o no encontrada. Por favor, abre Opciones, configura (o importa tu CSV/JSON) y guarda.");
