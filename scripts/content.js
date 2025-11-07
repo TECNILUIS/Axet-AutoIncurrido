@@ -94,14 +94,13 @@
 
         if (pageDateStr === todayStr) {
             console.log("[Incurrir Hoy] Fecha actual. Calculando tareas...");
-            // *** ¡¡AQUÍ NECESITAMOS LA FUNCIÓN getTareasParaDia_v2_3 IMPLEMENTADA EN incurrir.js!! ***
             const tareasHoy = getTareasParaDia_v2_3(today, config); // ¡Llamada al módulo incurrir.js!
-            await incurrirTareas(today, tareasHoy); // ¡Llamada al módulo incurrir.js!
+            await incurrirTareas(today, tareasHoy, config); // ¡Llamada al módulo incurrir.js!
         } else if (pageDate < today && horasCargadas === '00:00') {
             // Incurrir en fecha pasada si no tiene horas
             console.log(`[Incurrir Hoy] Fecha anterior (${pageDateStr}) sin horas. Calculando...`);
             const tareasPasadas = getTareasParaDia_v2_3(pageDate, config);
-            await incurrirTareas(pageDate, tareasPasadas);
+            await incurrirTareas(pageDate, tareasPasadas, config);
         } else {
             // Corregir fecha a hoy
             console.log(`[Incurrir Hoy] Fecha incorrecta (${pageDateStr}). Navegando a hoy (${todayStr})...`);
@@ -110,7 +109,7 @@
             await sleep(1500); // Espera post-navegación
             console.log("[Incurrir Hoy] Fecha corregida. Calculando tareas para hoy...");
             const tareasHoy = getTareasParaDia_v2_3(today, config);
-            await incurrirTareas(today, tareasHoy);
+            await incurrirTareas(today, tareasHoy, config);
         }
          console.log("================ FIN INCURRIDO HOY ================");
     }
