@@ -13,17 +13,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const importCsvFileInput = document.getElementById('import-csv-file');
     const statusEl = document.getElementById('status');
     const summarySdaEl = document.getElementById('summary-sda');
+    const summaryTechEl = document.getElementById('summary-tecnologia');
     const summaryProyectosCountEl = document.getElementById('summary-proyectos-count');
     const summaryDiasCountEl = document.getElementById('summary-dias-count');
     const prevWeekBtn = document.getElementById('prev-week');
     const nextWeekBtn = document.getElementById('next-week');
     const currentWeekDisplayEl = document.getElementById('current-week-display');
     const weeklyPlanContainerEl = document.getElementById('weekly-plan-container');
+    const technologyInput = document.getElementById('common-technology');
 
     // Estructura v2.5: planDiario contiene horas calculadas
     const defaultConfig = {
         proyectos: [], // Array de { codigo: string }
         sdaComun: "",
+        tecnologiaComun: "",
         horasEsperadasDiarias: {}, // Objeto { 'YYYY-MM-DD': 'horas/codigo', ... }
         planDiario: {} // Objeto { 'YYYY-MM-DD': [{ proyectoIndex, tipoTarea, horas, minutos }, ...], ... } // Horas PRE-CALCULADAS
     };
@@ -136,8 +139,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     // --- RENDERIZACIÓN ---
-    function renderProjectList(proyectos = [], sdaGlobal = "") {
-        projectList.innerHTML = ''; currentProyectos = []; currentSdaComun = sdaGlobal;
+    function renderProjectList(proyectos = [], sdaGlobal = "", tecnologiaGlobal = "") {
+        projectList.innerHTML = '';
+        currentProyectos = [];
+    currentSdaComun = sdaGlobal;
         if (!proyectos || !proyectos.length) {
             projectList.innerHTML = '<p style="text-align: center; color: #888;">Proyectos aparecerán aquí tras importar.</p>'; return;
         };
@@ -147,7 +152,12 @@ document.addEventListener('DOMContentLoaded', () => {
             row.dataset.index = index;
             row.querySelector('.project-codigo').value = proj.codigo || '';
             const sdaDisplay = row.querySelector('.project-sda-display');
-            if (sdaDisplay) sdaDisplay.textContent = sdaGlobal ? `(SDA: ${sdaGlobal})` : '';
+            if (sdaDisplay) {
+                const infoParts = [];
+                if (sdaGlobal) infoParts.push(`SDA: ${sdaGlobal}`);
+                if (tecnologiaGlobal) infoParts.push(`Tech: ${tecnologiaGlobal}`);
+                sdaDisplay.textContent = infoParts.length ? `(${infoParts.join(' · ')})` : '';
+            }
             projectList.appendChild(row);
         });
     }
@@ -249,15 +259,43 @@ document.addEventListener('DOMContentLoaded', () => {
     function render(config, source = 'load') {
         if (!config) config = defaultConfig;
         currentConfigData = config; // Guardar config completa
-        renderProjectList(config.proyectos, config.sdaComun);
+        renderProjectList(config.proyectos, config.sdaComun, config.tecnologiaComun);
         summarySdaEl.textContent = config.sdaComun || 'No definido';
+        if (summaryTechEl) summaryTechEl.textContent = config.tecnologiaComun ? config.tecnologiaComun : 'No definida';
+        if (technologyInput) technologyInput.value = config.tecnologiaComun || '';
         summaryProyectosCountEl.textContent = config.proyectos?.length || 0;
         const planDaysCount = Object.keys(config.planDiario || {}).length; // Contar días en planDiario
         summaryDiasCountEl.textContent = planDaysCount;
         if (source === 'load' || source === 'import') {
-             const firstPlanDay = planDaysCount > 0 ? Object.keys(config.planDiario).sort()[0] : null;
-             const baseDate = firstPlanDay ? new Date(firstPlanDay + 'T12:00:00') : new Date();
-             currentWeekStartDate = getMonday(baseDate);
+            const sortedPlanDays = Object.keys(config.planDiario || {}).sort();
+            if (sortedPlanDays.length) {
+                const today = new Date(); today.setHours(12, 0, 0, 0);
+                const firstDate = new Date(sortedPlanDays[0] + 'T12:00:00');
+                const lastDate = new Date(sortedPlanDays[sortedPlanDays.length - 1] + 'T12:00:00');
+
+                let baseDate = today;
+                if (isNaN(today.getTime())) {
+                    baseDate = firstDate;
+                } else if (!isNaN(firstDate.getTime()) && today < firstDate) {
+                    baseDate = firstDate;
+                } else if (!isNaN(lastDate.getTime()) && today > lastDate) {
+                    baseDate = lastDate;
+                }
+
+                currentWeekStartDate = getMonday(baseDate);
+            } else {
+                currentWeekStartDate = getMonday(new Date());
+            }
+        }
+
+        if ((!currentWeekStartDate || isNaN(currentWeekStartDate.getTime())) && planDaysCount > 0) {
+            const sortedPlanDays = Object.keys(config.planDiario || {}).sort();
+            if (sortedPlanDays.length) {
+                const fallbackDate = new Date(sortedPlanDays[0] + 'T12:00:00');
+                if (!isNaN(fallbackDate.getTime())) {
+                    currentWeekStartDate = getMonday(fallbackDate);
+                }
+            }
         }
         renderWeeklyPlanView(); // Renderizar usando currentConfigData (que tiene planDiario con horas)
     }
@@ -267,6 +305,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function saveOptions(configToSave) {
         // Validar estructura v2.5
         if (!configToSave || !configToSave.proyectos || configToSave.sdaComun === undefined ||
+            configToSave.tecnologiaComun === undefined ||
             configToSave.horasEsperadasDiarias === undefined || configToSave.planDiario === undefined) {
              if(window.showToast) window.showToast('Error: Configuración inválida V2.5.', 'error');
              console.error("Config inválida para guardar:", configToSave); return;
@@ -278,9 +317,18 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
      // Carga la configuración completa y renderiza
-     function restoreOptions() {
+    function restoreOptions() {
         chrome.storage.sync.get({ configV2: defaultConfig }, items => {
-            render(items.configV2 || defaultConfig, 'load');
+            const storedConfig = items.configV2 || defaultConfig;
+            const normalizedConfig = {
+                ...defaultConfig,
+                ...storedConfig,
+                proyectos: storedConfig.proyectos || defaultConfig.proyectos,
+                horasEsperadasDiarias: storedConfig.horasEsperadasDiarias || defaultConfig.horasEsperadasDiarias,
+                planDiario: storedConfig.planDiario || defaultConfig.planDiario
+            };
+            if (normalizedConfig.tecnologiaComun === undefined) normalizedConfig.tecnologiaComun = '';
+            render(normalizedConfig, 'load');
         });
     }
 
@@ -307,6 +355,9 @@ document.addEventListener('DOMContentLoaded', () => {
                  // Validar estructura v2.5
                  if (importedConfig.proyectos && importedConfig.sdaComun !== undefined &&
                      importedConfig.horasEsperadasDiarias !== undefined && importedConfig.planDiario !== undefined) {
+                     if (importedConfig.tecnologiaComun === undefined) {
+                         importedConfig.tecnologiaComun = '';
+                     }
                      // Asumimos que el JSON importado ya tiene las horas calculadas en planDiario
                      saveOptions(importedConfig); // Guardar Y renderizar
                      if (window.showToast) window.showToast('¡Config JSON importada y guardada!', 'success');
@@ -384,6 +435,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const newConfigFinal = {
                         proyectos: extractedDataRaw.proyectos,
                         sdaComun: extractedDataRaw.sdaComun,
+                        tecnologiaComun: currentConfigData.tecnologiaComun || "",
                         horasEsperadasDiarias: extractedDataRaw.horasEsperadasDiarias,
                         planDiario: planCalculadoFinal // Guardar el plan CON horas calculadas
                         // Ya no existe reglasPlanificacion
@@ -545,6 +597,24 @@ document.addEventListener('DOMContentLoaded', () => {
             renderWeeklyPlanView(); // Re-renderizar solo la semana
         }
     });
+
+    if (technologyInput) {
+        technologyInput.addEventListener('input', (event) => {
+            if (!summaryTechEl) return;
+            const previewValue = event.target.value.trim();
+            summaryTechEl.textContent = previewValue || 'No definida';
+        });
+
+        technologyInput.addEventListener('change', (event) => {
+            const newValue = event.target.value.trim();
+            if ((currentConfigData.tecnologiaComun || '') === newValue) return;
+            const updatedConfig = {
+                ...currentConfigData,
+                tecnologiaComun: newValue
+            };
+            saveOptions(updatedConfig);
+        });
+    }
 
     clearAllBtn.addEventListener('click', () => {
         // Show confirmation dialog
