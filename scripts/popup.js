@@ -88,6 +88,44 @@ async function injectScripts(tabId, scriptFiles) {
     }
 }
 
+/**
+ * Helper to send a message to the content script using Promises.
+ * @param {number} tabId
+ * @param {object} message
+ * @returns {Promise<any>}
+ */
+function sendTabMessage(tabId, message) {
+    return new Promise((resolve, reject) => {
+        chrome.tabs.sendMessage(tabId, message, (response) => {
+            if (chrome.runtime.lastError) {
+                reject(new Error(chrome.runtime.lastError.message));
+            } else {
+                resolve(response);
+            }
+        });
+    });
+}
+
+/**
+ * Ensure the content scripts are present in the tab. If not, inject them once.
+ * @param {number} tabId
+ */
+async function ensureContentScripts(tabId) {
+    try {
+        const pingResponse = await sendTabMessage(tabId, { action: 'ping' });
+        if (pingResponse?.status === 'ok') {
+            return;
+        }
+    } catch (error) {
+        // Ping falló: probablemente aún no se han inyectado los scripts.
+        console.log(`[Popup] Ping falló (se inyectarán scripts): ${error.message}`);
+    }
+
+    await injectScripts(tabId, SCRIPTS_TO_INJECT);
+    // Confirmar que ahora el contenido responde
+    await sendTabMessage(tabId, { action: 'ping' });
+}
+
 // --- Botón "Incurrir Tareas Hoy" ---
 document.getElementById('runScript').addEventListener('click', async () => {
     console.log("[Popup] Botón 'Incurrir Hoy' pulsado.");
@@ -96,17 +134,9 @@ document.getElementById('runScript').addEventListener('click', async () => {
 
         // Verificar que la pestaña sea válida (no interna de Chrome y sea http/https)
         if (tab && tab.id && tab.url && !tab.url.startsWith('chrome://') && tab.url.startsWith('http')) {
-            await injectScripts(tab.id, SCRIPTS_TO_INJECT);
-            // Enviar mensaje al content script para iniciar la acción
-            chrome.tabs.sendMessage(tab.id, { action: "incurrirHoy" }, (response) => {
-                if (chrome.runtime.lastError) {
-                    console.error("[Popup] Error enviando mensaje 'incurrirHoy':", chrome.runtime.lastError.message);
-                    // Podría indicar que el content script no respondió (quizás no se inyectó bien)
-                    alert("Error de comunicación con la página. Inténtalo de nuevo o recarga la extensión/página.");
-                } else {
-                    console.log("[Popup] Mensaje 'incurrirHoy' enviado, respuesta:", response);
-                }
-            });
+            await ensureContentScripts(tab.id);
+            const response = await sendTabMessage(tab.id, { action: "incurrirHoy" });
+            console.log("[Popup] Mensaje 'incurrirHoy' enviado, respuesta:", response);
         } else {
             console.warn("[Popup] No se puede ejecutar en esta pestaña:", tab ? tab.url : 'Pestaña inválida');
             alert("No se puede ejecutar la extensión en esta pestaña. Asegúrate de estar en la página de Axet.");
@@ -114,6 +144,9 @@ document.getElementById('runScript').addEventListener('click', async () => {
     } catch (error) {
         // Errores durante la inyección ya muestran alert
         console.error("[Popup] Error en el botón 'Incurrir Hoy':", error);
+        if (error?.message?.includes('Could not establish connection')) {
+            alert("No se pudo comunicar con la página. Recarga la pestaña de Axet e inténtalo de nuevo.");
+        }
     }
 });
 
@@ -195,22 +228,13 @@ async function handleRangeAction(actionType) {
         if (tab?.id && tab.url && !tab.url.startsWith('chrome://') && tab.url.startsWith('http')) {
             // Ensure scripts are injected before sending the message
             // You might already have SCRIPTS_TO_INJECT and injectScripts defined elsewhere in popup.js
-            await injectScripts(tab.id, SCRIPTS_TO_INJECT);
-            chrome.tabs.sendMessage(tab.id, {
+            await ensureContentScripts(tab.id);
+            const response = await sendTabMessage(tab.id, {
                 action: actionType,
-                startDate: startDateStr, // Use the correctly formatted local date string
-                endDate: endDateStr    // Use the correctly formatted local date string
-            }, (response) => {
-                if (chrome.runtime.lastError) {
-                    console.error(`[Popup] Error sending '${actionType}':`, chrome.runtime.lastError.message);
-                    // Provide feedback if message sending fails
-                    alert("Error al comunicar con la página. Inténtalo de nuevo o recarga la extensión/página.");
-                } else {
-                    console.log(`[Popup] Mensaje '${actionType}' enviado, respuesta:`, response);
-                    // Optional: Close popup or show success message here
-                    // window.close(); // Example: Close popup after action initiated
-                }
+                startDate: startDateStr,
+                endDate: endDateStr
             });
+            console.log(`[Popup] Mensaje '${actionType}' enviado, respuesta:`, response);
         } else {
             alert("No se puede ejecutar la acción en esta pestaña. Asegúrate de estar en la página correcta de Axet.");
         }
@@ -236,21 +260,16 @@ document.getElementById('debugNextStepBtn').addEventListener('click', async () =
     try {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         if (tab?.id && tab.url && !tab.url.startsWith('chrome://') && tab.url.startsWith('http')) {
-            // Inyectar scripts (asegura que todo esté cargado, incluido el nuevo módulo)
-            await injectScripts(tab.id, SCRIPTS_TO_INJECT);
-            
-            // Enviar mensaje para ejecutar el siguiente paso
-            chrome.tabs.sendMessage(tab.id, { action: "debugNextStep" }, (response) => {
-                if (chrome.runtime.lastError) {
-                     console.error("[Popup] Error enviando 'debugNextStep':", chrome.runtime.lastError.message);
-                     alert("Error de comunicación. Recarga la extensión/página.");
-                }
-                else console.log("[Popup] 'debugNextStep' enviado, respuesta:", response);
-            });
+            await ensureContentScripts(tab.id);
+            const response = await sendTabMessage(tab.id, { action: "debugNextStep" });
+            console.log("[Popup] 'debugNextStep' enviado, respuesta:", response);
         } else {
             alert("No se puede ejecutar la acción en esta pestaña.");
         }
     } catch (error) {
         console.error("[Popup] Error en el botón 'Debug':", error);
+        if (error?.message?.includes('Could not establish connection')) {
+            alert("No se pudo comunicar con la página. Recarga la pestaña de Axet e inténtalo de nuevo.");
+        }
     }
 });

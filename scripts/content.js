@@ -4,6 +4,12 @@
 // para evitar contaminar el scope global MÁS de lo necesario
 (function() {
     'use strict';
+
+    if (window.__axetContentScriptLoaded) {
+        console.log("[Content Script] Ya cargado anteriormente. Se omite reinyección duplicada.");
+        return;
+    }
+    window.__axetContentScriptLoaded = true;
     console.log("[Content Script] Inicializando...");
 
     // --- NUEVO: Estado global para el debug de creación de tareas ---
@@ -190,6 +196,11 @@
 
     // --- LISTENER PARA MENSAJES DEL POPUP ---
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+        if (request.action === 'ping') {
+            sendResponse({ status: 'ok' });
+            return false; // Respuesta síncrona
+        }
+
         console.log("[Content Script] Mensaje recibido:", request);
 
         // Cargamos la configuración ANTES de procesar cualquier acción

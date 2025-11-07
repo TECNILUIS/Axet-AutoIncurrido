@@ -125,6 +125,7 @@ async function incurrirTareas(fechaParaIncurrir, tareasAIncurrir) {
 
         console.log(`\n[Incurrir] --- TAREA ${tareaCounter}/${tareasAIncurrir.length}: ${tarea.nombre} (${tarea.codigoProyecto}) - ${tarea.horas}h ${tarea.minutos}m) ---`);
         const horasAntesDeIncurrir = getHorasActuales();
+        let usarBotonModificar = false;
 
         try {
             // --- Interacción con la UI de Axet ---
@@ -137,6 +138,38 @@ async function incurrirTareas(fechaParaIncurrir, tareasAIncurrir) {
             await sleep(300);
             const opcionSeleccionar = await waitForElement('div.choices__item[role="option"]', textosABuscar, dropdown, 3000);
             console.log(`[Incurrir] Opción encontrada: ${opcionSeleccionar.textContent.substring(0,60)}...`);
+
+            // Detectar si la opción ya tiene horas imputadas distintas a 00:00 para decidir la acción
+            const opcionTexto = (opcionSeleccionar.textContent || '').trim();
+            // Las opciones sin horas muestran '00:00', por lo que un formato fijo HH:MM es suficiente
+            const matchHorasAsignadas = opcionTexto.match(/(\d{2}):(\d{2})/);
+            if (matchHorasAsignadas) {
+                const horasAsignadas = parseInt(matchHorasAsignadas[1], 10) || 0;
+                const minutosAsignados = parseInt(matchHorasAsignadas[2], 10) || 0;
+                const totalAsignado = (horasAsignadas * 60) + minutosAsignados;
+                const horasPlan = parseInt(tarea.horas, 10) || 0;
+                const minutosPlan = parseInt(tarea.minutos, 10) || 0;
+                const totalPlan = (horasPlan * 60) + minutosPlan;
+                const textoAsignado = `${String(horasAsignadas).padStart(2, '0')}:${String(minutosAsignados).padStart(2, '0')}`;
+
+                if (totalAsignado > 0) {
+                    if (totalAsignado === totalPlan) {
+                        console.log(`[Incurrir] Tarea ${tarea.nombre} (${tarea.codigoProyecto}) ya incurrida con ${textoAsignado}. Saltando.`);
+                        if (typeof requestPageToast === 'function') {
+                            requestPageToast(`Tarea ${tarea.nombre} (${tarea.codigoProyecto}) ya tiene ${textoAsignado}.`, 'info', 4000);
+                        }
+                        // Cerrar el desplegable para dejar la UI limpia antes de continuar
+                        dropdown.dispatchEvent(new MouseEvent('click', { view: window, bubbles: true, cancelable: true }));
+                        await sleep(200);
+                        tareaCounter++;
+                        continue;
+                    }
+
+                    usarBotonModificar = true;
+                    console.log(`[Incurrir] Tarea ${tarea.nombre} (${tarea.codigoProyecto}) tiene ${textoAsignado}. Se actualizará usando el botón 'Modificar'.`);
+                }
+            }
+
             opcionSeleccionar.dispatchEvent(new MouseEvent('mousedown', { view: window, bubbles: true, cancelable: true }));
             opcionSeleccionar.dispatchEvent(new MouseEvent('click', { view: window, bubbles: true, cancelable: true }));
             console.log("[Incurrir] Opción seleccionada.");
@@ -150,10 +183,12 @@ async function incurrirTareas(fechaParaIncurrir, tareasAIncurrir) {
             console.log(`[Incurrir] Valores ${tarea.horas}h ${tarea.minutos}m introducidos.`);
             await sleep(300);
 
-            const incurrirButton = await waitForElement('button.incurrirBoton');
-            console.log("[Incurrir] Pulsando 'Incurrir'...");
-            incurrirButton.dispatchEvent(new MouseEvent('mousedown', { view: window, bubbles: true, cancelable: true }));
-            incurrirButton.dispatchEvent(new MouseEvent('click', { view: window, bubbles: true, cancelable: true }));
+            const botonSelector = usarBotonModificar ? 'button.modificarBoton' : 'button.incurrirBoton';
+            const botonDescripcion = usarBotonModificar ? "'Modificar'" : "'Incurrir'";
+            const botonAccion = await waitForElement(botonSelector);
+            console.log(`[Incurrir] Pulsando ${botonDescripcion}...`);
+            botonAccion.dispatchEvent(new MouseEvent('mousedown', { view: window, bubbles: true, cancelable: true }));
+            botonAccion.dispatchEvent(new MouseEvent('click', { view: window, bubbles: true, cancelable: true }));
 
             console.log("[Incurrir] Esperando actualización contador...");
             await waitForCondition(() => {
