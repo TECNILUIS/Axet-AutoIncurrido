@@ -86,8 +86,9 @@ function getTareasParaDia_v2_3(fecha, config) { // Mantenemos nombre por compati
  * Función principal para imputar las tareas preparadas para un día.
  * @param {Date} fechaParaIncurrir - La fecha en la que se deben incurrir las tareas.
  * @param {Array<object>} tareasAIncurrir - Lista preparada por getTareasParaDia_v2_3.
+ * @param {object} config - La configuración global.
  */
-async function incurrirTareas(fechaParaIncurrir, tareasAIncurrir) {
+async function incurrirTareas(fechaParaIncurrir, tareasAIncurrir, config) {
     // Asegurar dependencias (inyectadas globalmente)
     if (typeof requestPageToast !== 'function' || typeof getHorasActuales !== 'function' || typeof sleep !== 'function' ||
         typeof waitForElement !== 'function' || typeof waitForCondition !== 'function' || typeof findElementByText !== 'function') {
@@ -129,14 +130,62 @@ async function incurrirTareas(fechaParaIncurrir, tareasAIncurrir) {
 
         try {
             // --- Interacción con la UI de Axet ---
-            const dropdown = await waitForElement('.formio-component-select .choices');
-            const selectionBox = dropdown.querySelector('.choices__list--single');
+            let dropdown = await waitForElement('.formio-component-select .choices');
+            let selectionBox = dropdown.querySelector('.choices__list--single');
             if (dropdown.classList.contains('is-open')) { if (dropdown.classList.contains('is-open')) dropdown.click(); await sleep(200); }
             dropdown.dispatchEvent(new MouseEvent('click', { view: window, bubbles: true, cancelable: true }));
             console.log("[Incurrir] Dropdown abierto.");
             const textosABuscar = [`[${tarea.nombre}]`, tarea.codigoProyecto];
             await sleep(300);
-            const opcionSeleccionar = await waitForElement('div.choices__item[role="option"]', textosABuscar, dropdown, 3000);
+            let opcionSeleccionar = null;
+            try {
+                opcionSeleccionar = await waitForElement('div.choices__item[role="option"]', textosABuscar, dropdown, 3000);
+            } catch (lookupError) {
+                opcionSeleccionar = null;
+            }
+
+            if (!opcionSeleccionar) {
+                console.warn(`[Incurrir] Tarea ${tarea.nombre} (${tarea.codigoProyecto}) no encontrada en el desplegable. Intentando crearla automáticamente...`);
+                if (typeof requestPageToast === 'function') {
+                    requestPageToast(`Creando tarea ${tarea.nombre} (${tarea.codigoProyecto}) en Axet...`, 'info', 5000);
+                }
+                if (typeof crearTarea !== 'function') {
+                    throw new Error("Función crearTarea no disponible para crear la tarea ausente.");
+                }
+
+                let created = false;
+                try {
+                    // Llamamos a crearTarea. Esta función ya incurre el tiempo.
+                    created = await crearTarea(tarea, config);
+                    
+                    if (created) {
+                        console.log(`[Incurrir] Tarea ${tarea.nombre} creada e incurrida con éxito.`);
+                        
+                        // Esperamos a que el contador principal (en la página de incurrir)
+                        // se actualice antes de pasar a la siguiente tarea.
+                        await waitForCondition(() => {
+                            const horasActuales = getHorasActuales();
+                            return horasActuales !== null && horasActuales !== horasAntesDeIncurrir;
+                        }, 10000, "actualización contador post-creación");
+                        
+                        console.log(`[Incurrir] [ÉXITO] Tarea ${tareaCounter} (creada) incurrida. Horas ahora: ${getHorasActuales()}`);
+                        // La tarea está lista, saltamos al siguiente item del bucle 'for'
+                        tareaCounter++;
+                        continue; 
+
+                    } else {
+                        // 'crearTarea' falló internamente y devolvió false
+                        console.warn(`[Incurrir] El flujo 'crearTarea' para ${tarea.nombre} (${tarea.codigoProyecto}) finalizó con error. Saltando esta tarea.`);
+                        tareaCounter++;
+                        continue; 
+                    }
+
+                } catch (creationError) {
+                    // 'crearTarea' lanzó una excepción que 'try...catch' exterior capturará
+                    throw new Error(`Fallo al crear la tarea ${tarea.nombre} (${tarea.codigoProyecto}): ${creationError.message}`);
+                }
+            }
+
             console.log(`[Incurrir] Opción encontrada: ${opcionSeleccionar.textContent.substring(0,60)}...`);
 
             // Detectar si la opción ya tiene horas imputadas distintas a 00:00 para decidir la acción
