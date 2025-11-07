@@ -92,6 +92,10 @@
         .summary-section { margin-top: 30px; border-top: 2px solid #eee; padding-top: 15px; }
         .summary-details p { margin: 5px 0; }
         .summary-details strong { min-width: 100px; display: inline-block;}
+        .common-settings { margin: 10px 0 15px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+        .common-settings label { font-weight: bold; }
+        .common-settings input[type="text"] { flex: 1 1 220px; }
+        .common-settings small { color: #666; font-size: 12px; flex-basis: 100%; }
         .week-navigation { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
         .week-navigation button { background-color: #6c757d; padding: 5px 10px; font-size: 16px; flex-shrink: 0; }
         #current-week-display { font-weight: bold; font-size: 1.1em; text-align: center; flex-grow: 1; margin: 0 10px;}
@@ -166,8 +170,30 @@
             <h2>Resumen y Vista Semanal del Plan (Lunes-Viernes)</h2>
             <div class="summary-details">
                 <p><strong>SDA Común:</strong> <span id="summary-sda">No importado</span></p>
+                <p><strong>Tecnología común:</strong> <span id="summary-tecnologia">No definida</span></p>
                 <p><strong>Proyectos:</strong> <span id="summary-proyectos-count">0</span></p>
                 <p><strong>Días Planificados (Total):</strong> <span id="summary-dias-count">0</span></p>
+            </div>
+            <div class="common-settings">
+                <label for="common-technology">Selector tecnología:</label>
+                <input type="text" id="common-technology" list="technology-options" placeholder="Ej. Cells">
+                <datalist id="technology-options">
+                    <option value="APX"></option>
+                    <option value="ASO"></option>
+                    <option value="Cells"></option>
+                    <option value="Data Services"></option>
+                    <option value="Distribuido (Nacar, Spring, etc.)"></option>
+                    <option value="Google Cloud Platform"></option>
+                    <option value="Mainframe"></option>
+                    <option value="SaaS"></option>
+                    <option value="Security"></option>
+                    <option value="Otras Tecnologías"></option>
+                    <option value="Salesforce"></option>
+                    <option value="Openweb"></option>
+                    <option value="LRA"></option>
+                    <option value="LRBA"></option>
+                </datalist>
+                <small>Este valor se utilizará como tecnología por defecto al crear tareas de Construcción.</small>
             </div>
             <div class="week-navigation">
                 <button id="prev-week" disabled>ᐊ Semana Anterior</button>
