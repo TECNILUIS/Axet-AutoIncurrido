@@ -34,7 +34,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const flatpickrRangeOptions = {
         mode: "range",
         dateFormat: "Y-m-d", // Formato interno
-        altInput: true,      // Muestra input formateado
+        altInput: false,      // Muestra input formateado
         altFormat: "d/m/Y",  // Formato visible
         inline: true,        // Dibujar directamente
         showMonths: 1,
@@ -61,6 +61,7 @@ const SCRIPTS_TO_INJECT = [
     'scripts/shared/navigation.js',
     'scripts/modules/incurrir.js',
     'scripts/modules/borrar.js',
+    'scripts/modules/crearTarea.js',
     'scripts/content.js' // El orquestador principal va al final
 ];
 
@@ -227,4 +228,29 @@ document.getElementById('incurrirRangoBtn').addEventListener('click', () => {
 // --- Botón "Borrar Rango" ---
 document.getElementById('deleteScript').addEventListener('click', () => {
     handleRangeAction("deleteInRange");
+});
+
+// --- NUEVO: Botón Debug Siguiente Paso ---
+document.getElementById('debugNextStepBtn').addEventListener('click', async () => {
+    console.log("[Popup] Botón 'Debug Siguiente Paso' pulsado.");
+    try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (tab?.id && tab.url && !tab.url.startsWith('chrome://') && tab.url.startsWith('http')) {
+            // Inyectar scripts (asegura que todo esté cargado, incluido el nuevo módulo)
+            await injectScripts(tab.id, SCRIPTS_TO_INJECT);
+            
+            // Enviar mensaje para ejecutar el siguiente paso
+            chrome.tabs.sendMessage(tab.id, { action: "debugNextStep" }, (response) => {
+                if (chrome.runtime.lastError) {
+                     console.error("[Popup] Error enviando 'debugNextStep':", chrome.runtime.lastError.message);
+                     alert("Error de comunicación. Recarga la extensión/página.");
+                }
+                else console.log("[Popup] 'debugNextStep' enviado, respuesta:", response);
+            });
+        } else {
+            alert("No se puede ejecutar la acción en esta pestaña.");
+        }
+    } catch (error) {
+        console.error("[Popup] Error en el botón 'Debug':", error);
+    }
 });
