@@ -45,12 +45,25 @@
         .flatpickr-calendar.inline .flatpickr-weekday { font-size: 0.85em; line-height: 18px; height: 18px; }
         .flatpickr-calendar.inline .flatpickr-days { width: 100% !important; }
         .flatpickr-calendar.inline .flatpickr-day {
-           max-width: none; width: calc(100% / 7 - 4px); height: 35px;
-           line-height: 35px; font-size: 13px; margin: 1px; padding: 0;
+           /* ELIMINAMOS 'width' y 'max-width'. Dejamos que Flatpickr lo gestione. */
+           height: 35px; /* Mantenemos la altura deseada */
+           line-height: 35px; /* Mantenemos el centrado vertical */
+           
+           /* Estilos restantes que no afectan al ancho: */
+           font-size: 13px;
+           margin: 1px;
+           padding: 0;
            box-sizing: border-box;
+           /* Flatpickr/el navegador ahora calculará el ancho (flex-basis) automáticamente */
         }
         .flatpickr-day.selected, .flatpickr-day.startRange, .flatpickr-day.endRange,
-        .flatpickr-day.inRange:not(.startRange):not(.endRange) { border-radius: 3px; border-width: 1px; }
+        .flatpickr-day.inRange:not(.startRange):not(.endRange) {
+             border-radius: 3px;
+             border-width: 1px;
+             /* Asegurar que la altura/línea coincida */
+             height: 35px;
+             line-height: 35px;
+         }
         .flatpickr-day.startRange, .flatpickr-day.endRange {
              width: calc(100% / 7 - 4px); height: 35px; line-height: 35px;
          }
@@ -79,6 +92,9 @@
         <button id="deleteScript">Borrar Rango</button>
     </div>
 
+<hr style="border-top: 1px solid #ffc107; margin: 15px 0;">
+    <h4 style="margin-bottom: 8px; color: #fd7e14;">Debug</h4>
+    <button id="debugNextStepBtn" style="background-color: #fd7e14; width: 90%;">Siguiente Paso (Crear Tarea)</button>
     <script src="../lib/flatpickr/flatpickr.min.js"></script>
     <script src="../lib/flatpickr/l10n/es.js"></script>
     <script src="../scripts/popup.js"></script>
