@@ -80,25 +80,22 @@ const getPageDate = () => {
 
 /** Obtiene las horas cargadas actualmente mostradas en la página */
 const getHorasActuales = () => {
-     const selectorHoras = 'h2 > span.highlight'; // Selector que contiene ej. "09:00"
-     const h2Element = findElementByText('h2', 'Horas cargadas:'); // Encontrar el H2 contenedor
-
+     const h2Element = findElementByText('h2', 'Horas cargadas:');
      if (!h2Element) {
-         console.warn("[Utils] No se encontró H2 'Horas cargadas:'. Asumiendo 00:00.");
-         return '00:00';
+         // console.warn("[Utils] No se encontró H2 'Horas cargadas:'."); // Log demasiado ruidoso para un bucle
+         return null; // Devolver null si no se encuentra el contenedor
      }
      const highlightElement = h2Element.querySelector('.highlight');
-
      if (!highlightElement || !highlightElement.textContent) {
-         console.warn("[Utils] No se encontró span.highlight en 'Horas cargadas:'. Asumiendo 00:00.");
-         return '00:00';
+         // console.warn("[Utils] No se encontró span.highlight en 'Horas cargadas:'."); // Log ruidoso
+         return null; // Devolver null si el span no está o está vacío
      }
      const horasTexto = highlightElement.textContent.trim();
       if (!/^\d{1,2}:\d{2}$/.test(horasTexto)) { // Permitir H:MM o HH:MM
-           console.warn(`[Utils] Texto horas '${horasTexto}' no tiene formato H(H):MM. Asumiendo 00:00.`);
-           return '00:00';
+           console.warn(`[Utils] Texto horas '${horasTexto}' no tiene formato H(H):MM.`);
+           return null; // Devolver null si el formato es inesperado
       }
-      // Asegurar formato HH:MM (pad con 0 si es necesario)
+      // Asegurar formato HH:MM
       const parts = horasTexto.split(':');
       const hours = parts[0].padStart(2, '0');
       const minutes = parts[1]; // Ya tiene 2 dígitos por regex

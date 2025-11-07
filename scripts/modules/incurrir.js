@@ -135,7 +135,7 @@ async function incurrirTareas(fechaParaIncurrir, tareasAIncurrir) {
             console.log("[Incurrir] Dropdown abierto.");
             const textosABuscar = [`[${tarea.nombre}]`, tarea.codigoProyecto];
             await sleep(300);
-            const opcionSeleccionar = await waitForElement('div.choices__item[role="option"]', textosABuscar, dropdown);
+            const opcionSeleccionar = await waitForElement('div.choices__item[role="option"]', textosABuscar, dropdown, 3000);
             console.log(`[Incurrir] Opción encontrada: ${opcionSeleccionar.textContent.substring(0,60)}...`);
             opcionSeleccionar.dispatchEvent(new MouseEvent('mousedown', { view: window, bubbles: true, cancelable: true }));
             opcionSeleccionar.dispatchEvent(new MouseEvent('click', { view: window, bubbles: true, cancelable: true }));
@@ -157,10 +157,17 @@ async function incurrirTareas(fechaParaIncurrir, tareasAIncurrir) {
 
             console.log("[Incurrir] Esperando actualización contador...");
             await waitForCondition(() => {
-                const horasActuales = getHorasActuales();
-                return horasActuales !== horasAntesDeIncurrir && /^\d{2}:\d{2}$/.test(horasActuales);
+                const horasActuales = getHorasActuales(); // Puede devolver "08:00" o null
+                
+                // La condición es:
+                // 1. horasActuales NO es null (el elemento se ha cargado y tiene formato válido)
+                // 2. horasActuales es DIFERENTE al valor que teníamos ANTES de hacer clic
+                return horasActuales !== null && horasActuales !== horasAntesDeIncurrir;
             }, 10000, "actualización contador post-incurrido");
-            console.log(`[Incurrir] [ÉXITO] Tarea ${tareaCounter} incurrida. Horas ahora: ${getHorasActuales()}`);
+
+            // Leemos el valor final una vez que la condición se cumple
+            const horasFinales = getHorasActuales(); // Leemos el valor estable
+            console.log(`[Incurrir] [ÉXITO] Tarea ${tareaCounter} incurrida. Horas ahora: ${horasFinales || '??:??'}`);
             // --- Fin Interacción ---
         } catch (error) {
              console.error(`[Incurrir] ERROR Tarea ${tareaCounter} (${tarea.nombre} - ${tarea.codigoProyecto}):`, error);

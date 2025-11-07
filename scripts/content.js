@@ -6,6 +6,11 @@
     'use strict';
     console.log("[Content Script] Inicializando...");
 
+    // --- NUEVO: Estado global para el debug de creación de tareas ---
+    // (Se reinicia cada vez que content.js se recarga/inyecta)
+    let debugTaskCreationStep = 0;
+    // --- FIN NUEVO ---
+
     // --- Definición Global de requestPageToast ---
     // (Necesaria aquí si toast.js no se inyecta o no define una función global)
     // Es mejor si toast.js se inyecta y define window.showToast globalmente.
@@ -227,6 +232,26 @@
                             sendResponse({ status: "Error", message: error.message });
                         });
                     break; // Fin incurrirInRange
+
+                case "debugNextStep":
+                    if (typeof executeTaskCreationStep === 'function') {
+                        // Pasamos el paso actual, la función devuelve el *siguiente* paso
+                        executeTaskCreationStep(debugTaskCreationStep + 1, config) // +1 para ejecutar el siguiente paso
+                            .then((nextStep) => {
+                                debugTaskCreationStep = nextStep; // Actualizar el estado
+                                sendResponse({ status: "Paso debug ejecutado", nextStep: nextStep });
+                            })
+                            .catch(error => {
+                                console.error("[Content Script] Error en executeTaskCreationStep:", error);
+                                requestPageToast(`Error debug: ${error.message}`, 'error');
+                                sendResponse({ status: "Error debug", message: error.message });
+                                debugTaskCreationStep = 0; // Reiniciar en error
+                            });
+                    } else {
+                         console.error("[Content Script] executeTaskCreationStep no está definida.");
+                         sendResponse({ status: "Error", message: "Función debug no encontrada." });
+                    }
+                    break;
 
                 default:
                     console.warn("[Content Script] Acción desconocida recibida:", request.action);
