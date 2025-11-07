@@ -249,7 +249,7 @@
                         // Pasamos el paso actual, la función devuelve el *siguiente* paso
                         executeTaskCreationStep(debugTaskCreationStep + 1, config) // +1 para ejecutar el siguiente paso
                             .then((nextStep) => {
-                                debugTaskCreationStep = nextStep; // Actualizar el estado
+                                debugTaskCreationStep = nextStep > 0 ? nextStep - 1 : 0; // Mantener el último paso completado
                                 sendResponse({ status: "Paso debug ejecutado", nextStep: nextStep });
                             })
                             .catch(error => {
