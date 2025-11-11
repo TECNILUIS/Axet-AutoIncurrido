@@ -10,6 +10,7 @@
         .options-container { width: 100%; max-width: 900px; /* Ancho para la semana */ background: white; padding: 20px; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,0.06); }
         h1, h2 { border-bottom: 2px solid #eee; padding-bottom: 8px; margin-bottom: 15px;}
         input[type="text"] { padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; box-sizing: border-box;}
+        select { padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; box-sizing: border-box; background-color: white; cursor: pointer;}
         button { border: none; border-radius: 4px; cursor: pointer; color: white; padding: 8px 12px; font-size: 14px; box-sizing: border-box;} /* Added box-sizing */
         .list-container { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; max-height: 150px; /* Altura reducida */ overflow-y: auto; border: 1px solid #eee; padding: 10px; border-radius: 5px; background: #f9f9f9;}
         .rule-row { display: grid; gap: 10px; align-items: center; border: 1px solid #ccc; padding: 8px 10px; border-radius: 5px; background: white;}
@@ -94,7 +95,7 @@
         .summary-details strong { min-width: 100px; display: inline-block;}
         .common-settings { margin: 10px 0 15px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
         .common-settings label { font-weight: bold; }
-        .common-settings input[type="text"] { flex: 1 1 220px; }
+        .common-settings select { flex: 1 1 220px; }
         .common-settings small { color: #666; font-size: 12px; flex-basis: 100%; }
         .week-navigation { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
         .week-navigation button { background-color: #6c757d; padding: 5px 10px; font-size: 16px; flex-shrink: 0; }
@@ -140,6 +141,13 @@
             display: flex; align-items: center; justify-content: center;
             flex-grow: 1; /* Ocupar espacio vertical */
          }
+
+         /* --- NUEVO: Estilo para el día actual --- */
+        .day-column.today {
+            border: 2px solid #007bff;
+            background-color: #f0f7ff;
+            box-shadow: 0 0 5px rgba(0,123,255,0.3);
+        }
         /* --- FIN Estilos Vista Semanal --- */
     </style>
 </head>
@@ -176,23 +184,23 @@
             </div>
             <div class="common-settings">
                 <label for="common-technology">Selector tecnología:</label>
-                <input type="text" id="common-technology" list="technology-options" placeholder="Ej. Cells">
-                <datalist id="technology-options">
-                    <option value="APX"></option>
-                    <option value="ASO"></option>
-                    <option value="Cells"></option>
-                    <option value="Data Services"></option>
-                    <option value="Distribuido (Nacar, Spring, etc.)"></option>
-                    <option value="Google Cloud Platform"></option>
-                    <option value="Mainframe"></option>
-                    <option value="SaaS"></option>
-                    <option value="Security"></option>
-                    <option value="Otras Tecnologías"></option>
-                    <option value="Salesforce"></option>
-                    <option value="Openweb"></option>
-                    <option value="LRA"></option>
-                    <option value="LRBA"></option>
-                </datalist>
+                <select id="common-technology">
+                    <option value="">-- Seleccionar Tecnología --</option>
+                    <option value="APX">APX</option>
+                    <option value="ASO">ASO</option>
+                    <option value="Cells">Cells</option>
+                    <option value="Data Services">Data Services</option>
+                    <option value="Distribuido (Nacar, Spring, etc.)">Distribuido (Nacar, Spring, etc.)</option>
+                    <option value="Google Cloud Platform">Google Cloud Platform</option>
+                    <option value="Mainframe">Mainframe</option>
+                    <option value="SaaS">SaaS</option>
+                    <option value="Security">Security</option>
+                    <option value="Otras Tecnologías">Otras Tecnologías</option>
+                    <option value="Salesforce">Salesforce</option>
+                    <option value="Openweb">Openweb</option>
+                    <option value="LRA">LRA</option>
+                    <option value="LRBA">LRBA</option>
+                </select>
                 <small>Este valor se utilizará como tecnología por defecto al crear tareas de Construcción.</small>
             </div>
             <div class="week-navigation">

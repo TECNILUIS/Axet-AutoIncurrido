@@ -175,6 +175,10 @@ document.addEventListener('DOMContentLoaded', () => {
         weeklyPlanContainerEl.innerHTML = '';
         const daysHeader = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie'];
 
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayStrYYYYMMDD = formatDateYYYYMMDD(today);
+
         for (let i = 0; i < 5; i++) {
             const dayDate = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + i);
             dayDate.setHours(12, 0, 0, 0);
@@ -182,6 +186,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const dayName = daysHeader[i];
             const dayColumn = document.createElement('div'); dayColumn.classList.add('day-column');
 
+            if (dayStrYYYYMMDD === todayStrYYYYMMDD) {
+                dayColumn.classList.add('today');
+            }
+            
             const horasEsperadas = (currentConfigData.horasEsperadasDiarias[dayStrYYYYMMDD] || '').toUpperCase();
             // --- USA planDiario (que ahora tiene horas calculadas) ---
             const planCalculadoDelDia = currentConfigData.planDiario[dayStrYYYYMMDD] || [];
