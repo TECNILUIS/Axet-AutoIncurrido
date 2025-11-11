@@ -28,7 +28,8 @@ document.addEventListener('DOMContentLoaded', () => {
         sdaComun: "",
         tecnologiaComun: "",
         horasEsperadasDiarias: {}, // Objeto { 'YYYY-MM-DD': 'horas/codigo', ... }
-        planDiario: {} // Objeto { 'YYYY-MM-DD': [{ proyectoIndex, tipoTarea, horas, minutos }, ...], ... } // Horas PRE-CALCULADAS
+        planDiario: {}, // Objeto { 'YYYY-MM-DD': [{ proyectoIndex, tipoTarea, horas, minutos }, ...], ... } // Horas PRE-CALCULADAS
+        employeeId: "" // ID del empleado guardado
     };
 
     let currentProyectos = []; let currentSdaComun = "";
@@ -263,6 +264,7 @@ document.addEventListener('DOMContentLoaded', () => {
         summarySdaEl.textContent = config.sdaComun || 'No definido';
         if (summaryTechEl) summaryTechEl.textContent = config.tecnologiaComun ? config.tecnologiaComun : 'No definida';
         if (technologyInput) technologyInput.value = config.tecnologiaComun || '';
+        if (employeeIdInput) employeeIdInput.value = config.employeeId || '';
         summaryProyectosCountEl.textContent = config.proyectos?.length || 0;
         const planDaysCount = Object.keys(config.planDiario || {}).length; // Contar días en planDiario
         summaryDiasCountEl.textContent = planDaysCount;
@@ -325,7 +327,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 ...storedConfig,
                 proyectos: storedConfig.proyectos || defaultConfig.proyectos,
                 horasEsperadasDiarias: storedConfig.horasEsperadasDiarias || defaultConfig.horasEsperadasDiarias,
-                planDiario: storedConfig.planDiario || defaultConfig.planDiario
+                planDiario: storedConfig.planDiario || defaultConfig.planDiario,
+                employeeId: storedConfig.employeeId || defaultConfig.employeeId
             };
             if (normalizedConfig.tecnologiaComun === undefined) normalizedConfig.tecnologiaComun = '';
             render(normalizedConfig, 'load');
@@ -437,7 +440,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         sdaComun: extractedDataRaw.sdaComun,
                         tecnologiaComun: currentConfigData.tecnologiaComun || "",
                         horasEsperadasDiarias: extractedDataRaw.horasEsperadasDiarias,
-                        planDiario: planCalculadoFinal // Guardar el plan CON horas calculadas
+                        planDiario: planCalculadoFinal, // Guardar el plan CON horas calculadas
+                        employeeId: employeeId.trim().toUpperCase() // Guardar el employee ID
                         // Ya no existe reglasPlanificacion
                     };
 
