@@ -385,17 +385,23 @@ async function crearTarea(tarea, config) {
         const horasAsignar = String((tarea?.tareaCalc && tarea.tareaCalc.horas) || tarea.horas || '0');
         const minutosAsignar = String((tarea?.tareaCalc && tarea.tareaCalc.minutos) || tarea.minutos || '0');
 
+        await safeSleep(500);
+
         horasInput.focus();
         horasInput.value = horasAsignar;
         horasInput.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
         horasInput.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
         console.log(`[Crear Tarea] Paso 8: Horas asignadas (${horasAsignar}).`);
 
+        await safeSleep(500);
+
         minutosInput.focus();
         minutosInput.value = minutosAsignar;
         minutosInput.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
         minutosInput.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
         console.log(`[Crear Tarea] Paso 8: Minutos asignados (${minutosAsignar}).`);
+
+        await safeSleep(500);
 
         console.log("[Crear Tarea] Paso 8: Esperando botón 'Incurrir'...");
         const botonIncurrir = await waitForElement('button[name="data[worklogBoton]"]', 'Incurrir', document, 10000);
