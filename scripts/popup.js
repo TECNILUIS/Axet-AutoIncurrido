@@ -1,4 +1,4 @@
-// scripts/popup.js
+// scripts/popup.js (Simplificado)
 
 // --- Initialize Flatpickr ---
 document.addEventListener('DOMContentLoaded', function() {
@@ -13,17 +13,11 @@ document.addEventListener('DOMContentLoaded', function() {
     let maxSelectableDate = null;
 
     if (currentDayOfMonth <= 15) {
-        // Permitir seleccionar solo del 1 al día de HOY (o 15, lo que sea menor)
         minSelectableDate = new Date(currentYear, currentMonth, 1);
-        // El máximo es hoy, porque no se puede ir más allá, incluso si el día 15 es futuro
         maxSelectableDate = today;
-        console.log(`[Popup] Hoy (${currentDayOfMonth}) <= 15. Rango: 1/${currentMonth+1} a HOY (${today.toLocaleDateString()}).`);
     } else {
-        // Permitir seleccionar solo del 16 al día de HOY
         minSelectableDate = new Date(currentYear, currentMonth, 16);
-        // El máximo es hoy
         maxSelectableDate = today;
-        console.log(`[Popup] Hoy (${currentDayOfMonth}) > 15. Rango: 16/${currentMonth+1} a HOY (${today.toLocaleDateString()}).`);
     }
     // --- FIN LÓGICA RESTRICCIÓN ---
 
@@ -33,60 +27,24 @@ document.addEventListener('DOMContentLoaded', function() {
     // Opciones para Rango, Inline, Español y Fechas Restringidas
     const flatpickrRangeOptions = {
         mode: "range",
-        dateFormat: "Y-m-d", // Formato interno
-        altInput: false,      // Muestra input formateado
-        altFormat: "d/m/Y",  // Formato visible
-        inline: true,        // Dibujar directamente
+        dateFormat: "Y-m-d",
+        altInput: false,
+        altFormat: "d/m/Y",
+        inline: true,
         showMonths: 1,
-        locale: "es",        // Usar idioma español
-        // --- APLICAR RESTRICCIONES ---
+        locale: "es",
         minDate: minSelectableDate,
-        maxDate: maxSelectableDate, // MaxDate ahora es 'today' o '15th' (si hoy < 15)
+        maxDate: maxSelectableDate,
         monthSelectorType: "static"
     };
 
-    // Inicializar en el input de rango
     flatpickr(fechaRangoInput, flatpickrRangeOptions);
-
-    console.log("[Popup] Flatpickr inicializado (Rango, Inline, Español, Restringido a Quincena + Pasado).");
+    console.log("[Popup] Flatpickr inicializado.");
 });
 // --- End Flatpickr Initialization ---
 
 
 // --- Extension Logic ---
-// Lista de scripts a inyectar en la página
-const SCRIPTS_TO_INJECT = [
-    'scripts/shared/toast.js',
-    'scripts/shared/utils.js',
-    'scripts/shared/navigation.js',
-    'scripts/modules/incurrir.js',
-    'scripts/modules/borrar.js',
-    'scripts/modules/crearTarea.js',
-    'scripts/content.js' // El orquestador principal va al final
-];
-
-/**
- * Inyecta una lista de scripts en la pestaña activa secuencialmente.
- * @param {number} tabId - ID de la pestaña donde inyectar.
- * @param {string[]} scriptFiles - Array con las rutas de los scripts.
- */
-async function injectScripts(tabId, scriptFiles) {
-    for (const file of scriptFiles) {
-        try {
-            // console.log(`[Popup] Inyectando ${file}...`); // Descomentar para depuración
-            await chrome.scripting.executeScript({
-                target: { tabId: tabId },
-                files: [file]
-            });
-            // console.log(`[Popup] ${file} inyectado con éxito.`); // Descomentar para depuración
-        } catch (error) {
-            console.error(`[Popup] Error al inyectar ${file}:`, error);
-            // Mostrar error al usuario y detener
-            alert(`Error crítico al cargar la extensión (${file}).\nRecarga la página de Axet y la extensión.\nDetalles: ${error.message}`);
-            throw error; // Propagar el error para detener la ejecución
-        }
-    }
-}
 
 /**
  * Helper to send a message to the content script using Promises.
@@ -98,6 +56,9 @@ function sendTabMessage(tabId, message) {
     return new Promise((resolve, reject) => {
         chrome.tabs.sendMessage(tabId, message, (response) => {
             if (chrome.runtime.lastError) {
+                // Si falla la conexión, es probable que la página de Axet se esté
+                // recargando o sea una página interna de Chrome.
+                console.warn(`[Popup] No se pudo enviar mensaje (quizás recargando): ${chrome.runtime.lastError.message}`);
                 reject(new Error(chrome.runtime.lastError.message));
             } else {
                 resolve(response);
@@ -106,35 +67,15 @@ function sendTabMessage(tabId, message) {
     });
 }
 
-/**
- * Ensure the content scripts are present in the tab. If not, inject them once.
- * @param {number} tabId
- */
-async function ensureContentScripts(tabId) {
-    try {
-        const pingResponse = await sendTabMessage(tabId, { action: 'ping' });
-        if (pingResponse?.status === 'ok') {
-            return;
-        }
-    } catch (error) {
-        // Ping falló: probablemente aún no se han inyectado los scripts.
-        console.log(`[Popup] Ping falló (se inyectarán scripts): ${error.message}`);
-    }
-
-    await injectScripts(tabId, SCRIPTS_TO_INJECT);
-    // Confirmar que ahora el contenido responde
-    await sendTabMessage(tabId, { action: 'ping' });
-}
-
 // --- Botón "Incurrir Tareas Hoy" ---
 document.getElementById('runScript').addEventListener('click', async () => {
     console.log("[Popup] Botón 'Incurrir Hoy' pulsado.");
     try {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
-        // Verificar que la pestaña sea válida (no interna de Chrome y sea http/https)
-        if (tab && tab.id && tab.url && !tab.url.startsWith('chrome://') && tab.url.startsWith('http')) {
-            await ensureContentScripts(tab.id);
+        if (tab?.id && tab.url && tab.url.startsWith('http')) {
+            // Ya no necesitamos 'ensureContentScripts'. Solo enviamos el mensaje.
+            // content.js, que ya está en la página, lo recibirá.
             const response = await sendTabMessage(tab.id, { action: "incurrirHoy" });
             console.log("[Popup] Mensaje 'incurrirHoy' enviado, respuesta:", response);
         } else {
@@ -142,7 +83,6 @@ document.getElementById('runScript').addEventListener('click', async () => {
             alert("No se puede ejecutar la extensión en esta pestaña. Asegúrate de estar en la página de Axet.");
         }
     } catch (error) {
-        // Errores durante la inyección ya muestran alert
         console.error("[Popup] Error en el botón 'Incurrir Hoy':", error);
         if (error?.message?.includes('Could not establish connection')) {
             alert("No se pudo comunicar con la página. Recarga la pestaña de Axet e inténtalo de nuevo.");
@@ -152,12 +92,11 @@ document.getElementById('runScript').addEventListener('click', async () => {
 
 /**
  * Reads the date range from Flatpickr, validates it, and sends a message to the content script.
- * USES LOCAL DATE FORMATTING.
  * @param {string} actionType - The action to send (e.g., "incurrirInRange", "deleteInRange").
  */
 async function handleRangeAction(actionType) {
     console.log(`[Popup] Botón '${actionType}' pulsado.`);
-    const fechaRangoInput = document.getElementById('fechaRango'); // The original input Flatpickr is attached to
+    const fechaRangoInput = document.getElementById('fechaRango');
     const rangeInstance = fechaRangoInput._flatpickr;
 
     if (!rangeInstance) {
@@ -166,69 +105,37 @@ async function handleRangeAction(actionType) {
     }
     const selectedDates = rangeInstance.selectedDates;
 
-    // Check if exactly two dates are selected
     if (selectedDates.length !== 2) {
         alert("Selecciona un rango completo (fecha de inicio y fecha de fin).");
         return;
     }
 
-    const startDate = selectedDates[0]; // This is a local Date object
-    const endDate = selectedDates[1];   // This is a local Date object
+    const startDate = selectedDates[0];
+    const endDate = selectedDates[1];
 
-    // --- CORRECT LOCAL DATE FORMATTING ---
-    // Helper function to format Date object to 'YYYY-MM-DD' using local date parts
     const formatDateLocal = (date) => {
-        if (!date) return null; // Handle cases where date might be null initially
+        if (!date) return null;
         const year = date.getFullYear();
-        // getMonth() is 0-indexed (0=Jan, 11=Dec), so add 1
         const month = String(date.getMonth() + 1).padStart(2, '0');
-        // getDate() returns the day of the month (1-31)
         const day = String(date.getDate()).padStart(2, '0');
         return `${year}-${month}-${day}`;
     };
 
-    const startDateStr = formatDateLocal(startDate); // Correct 'YYYY-MM-DD'
-    const endDateStr = formatDateLocal(endDate);   // Correct 'YYYY-MM-DD'
-    // --- END CORRECTION ---
+    const startDateStr = formatDateLocal(startDate);
+    const endDateStr = formatDateLocal(endDate);
 
-    // Validate the selected range against current fortnight rules and 'today'
-    const today = new Date(); today.setHours(0,0,0,0);
-    const currentDayOfMonth = today.getDate();
-    let minAllowed, maxAllowed;
+    // Validación de quincena (¡movida al lado del content script!)
+    // El popup ya no necesita hacer esta validación, la hará el content script
+    // antes de ejecutar la acción, lo cual es más robusto.
+    // ... (Validación de fechas eliminada de aquí) ...
 
-    if (currentDayOfMonth <= 15) {
-        minAllowed = new Date(today.getFullYear(), today.getMonth(), 1);
-        maxAllowed = new Date(today.getFullYear(), today.getMonth(), 15);
-    } else {
-        minAllowed = new Date(today.getFullYear(), today.getMonth(), 16);
-        maxAllowed = new Date(today.getFullYear(), today.getMonth() + 1, 0); // Last day of current month
-    }
-    // Ensure maxAllowed is not later than today
-    if (maxAllowed > today) {
-        maxAllowed = today;
-    }
-    minAllowed.setHours(0,0,0,0);
-    maxAllowed.setHours(0,0,0,0);
-
-    // Normalize selected dates for comparison (redundant but safe)
-    const selectedStartNorm = new Date(startDate); selectedStartNorm.setHours(0,0,0,0);
-    const selectedEndNorm = new Date(endDate); selectedEndNorm.setHours(0,0,0,0);
-
-    if (selectedStartNorm < minAllowed || selectedEndNorm > maxAllowed) {
-        alert(`El rango seleccionado está fuera del período permitido actualmente (${minAllowed.toLocaleDateString('es-ES')} - ${maxAllowed.toLocaleDateString('es-ES')}).`);
-        return;
-    }
-
-    console.log(`[Popup] Rango válido (local): ${startDateStr} a ${endDateStr}`);
+    console.log(`[Popup] Rango (local): ${startDateStr} a ${endDateStr}. Enviando...`);
 
     // Send message to content script
     try {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        // Check if tab and tab.id are valid before proceeding
-        if (tab?.id && tab.url && !tab.url.startsWith('chrome://') && tab.url.startsWith('http')) {
-            // Ensure scripts are injected before sending the message
-            // You might already have SCRIPTS_TO_INJECT and injectScripts defined elsewhere in popup.js
-            await ensureContentScripts(tab.id);
+        if (tab?.id && tab.url && tab.url.startsWith('http')) {
+            // Ya no se necesita ensureContentScripts
             const response = await sendTabMessage(tab.id, {
                 action: actionType,
                 startDate: startDateStr,
@@ -240,7 +147,7 @@ async function handleRangeAction(actionType) {
         }
     } catch (error) {
         console.error(`[Popup] Error during '${actionType}' process:`, error);
-        alert(`Se produjo un error: ${error.message}`); // Show error to user
+        alert(`Se produjo un error: ${error.message}`);
     }
 }
 
@@ -252,24 +159,4 @@ document.getElementById('incurrirRangoBtn').addEventListener('click', () => {
 // --- Botón "Borrar Rango" ---
 document.getElementById('deleteScript').addEventListener('click', () => {
     handleRangeAction("deleteInRange");
-});
-
-// --- NUEVO: Botón Debug Siguiente Paso ---
-document.getElementById('debugNextStepBtn').addEventListener('click', async () => {
-    console.log("[Popup] Botón 'Debug Siguiente Paso' pulsado.");
-    try {
-        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        if (tab?.id && tab.url && !tab.url.startsWith('chrome://') && tab.url.startsWith('http')) {
-            await ensureContentScripts(tab.id);
-            const response = await sendTabMessage(tab.id, { action: "debugNextStep" });
-            console.log("[Popup] 'debugNextStep' enviado, respuesta:", response);
-        } else {
-            alert("No se puede ejecutar la acción en esta pestaña.");
-        }
-    } catch (error) {
-        console.error("[Popup] Error en el botón 'Debug':", error);
-        if (error?.message?.includes('Could not establish connection')) {
-            alert("No se pudo comunicar con la página. Recarga la pestaña de Axet e inténtalo de nuevo.");
-        }
-    }
 });

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Axet-AutoIncurrido",
-  "version": "2.3",
+  "version": "2.4",
   "description": "Automatiza la imputación de horas en AxetFlows.",
   "author": "José Luis Guidú Navas",
   "homepage_url": "https://github.com/TECNILUIS/Axet-AutoIncurrido",
@@ -33,9 +33,23 @@
     {
       "resources": [
         "scripts/injector.js",
-        "scripts/shared/toast.js"
+        "scripts/shared/toast.js",
+        "scripts/shared/utils.js",
+        "scripts/shared/navigation.js",
+        "scripts/modules/incurrir.js",
+        "scripts/modules/borrar.js",
+        "scripts/modules/crearTarea.js"
       ],
       "matches": ["https://axet.nttdata.com/*"]
+    }
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://axet.nttdata.com/*"],
+      "js": [
+        "scripts/shared/toast.js",
+        "scripts/content.js"
+      ]
     }
   ]
 }
