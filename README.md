@@ -83,6 +83,67 @@ Para evitar esto, puedes usar las funciones de **Exportar** e **Importar**:
 
 ---
 
+## 📊 Generación de CSV desde Google Sheets (Apps Script)
+
+Si prefieres mantener tu planificación mensual en Google Sheets, puedes usar el script `descarga_csv.gs` para generar automáticamente el CSV de importación.
+
+### 🔧 Configuración del Script
+
+1. **Abre tu hoja de cálculo en Google Sheets** donde tienes tu planificación mensual.
+2. Ve a **Extensiones** > **Apps Script**.
+3. Borra cualquier código existente y pega el contenido del archivo `descarga_csv.gs`.
+4. **Modifica tu código de usuario**: En la línea 6, cambia `"T000000"` por tu propio código de usuario:
+   ```javascript
+   var codigoUsuario = "T000000"; // Reemplaza con tu código de empleado
+   ```
+5. Haz clic en **Guardar** (icono del disquete) y dale un nombre al proyecto (ej. "Generador CSV Axet").
+
+### 📋 Formato Esperado de la Hoja
+
+El script espera que tu hoja de cálculo tenga la siguiente estructura:
+
+- **Fila de Meses**: Primera fila con los nombres de los meses.
+- **Fila de Encabezados**: Debe contener la palabra "Usuario" en la columna A, seguida de las columnas de días del mes.
+- **Fila de Usuario**: Debe comenzar con tu código de usuario (ej. "T000000") en la columna A.
+- **Columnas de Calendario**: A partir de cierta columna, deben aparecer los días del mes (1, 2, 3... 31).
+- **Colores de Fondo**: Cada celda del calendario debe tener un color que identifique la fase del proyecto:
+  - 🟨 **Amarillo** (`#ffff00`): Diseño (A)
+  - 🟦 **Azul claro** (`#a4c2f4`): Construcción (B)
+  - 🟪 **Morado** (`#8e7cc3`): Pruebas (C)
+  - 🟩 **Verde** (`#6aa84f`): Despliegue (D)
+
+Las celdas pueden contener números (ej. "4,5" o "8") que representan horas. El script añadirá automáticamente la letra de fase correspondiente.
+
+### ▶️ Generar el CSV
+
+1. En tu hoja de Google Sheets, ve a **Extensiones** > **Apps Script**.
+2. Haz clic en el botón **▶️ Ejecutar** (o presiona Ctrl/Cmd + R).
+3. La primera vez, Google te pedirá autorización:
+   - Haz clic en **Revisar permisos**.
+   - Selecciona tu cuenta de Google.
+   - Haz clic en **Avanzado** > **Ir a [nombre del proyecto] (no seguro)**.
+   - Haz clic en **Permitir**.
+4. Aparecerá una ventana modal con el mensaje **"✅ CSV Generado con Éxito"**.
+5. La descarga comenzará automáticamente después de 1.5 segundos. Si no, haz clic en el botón **📥 DESCARGAR CSV**.
+6. El archivo se guardará como `Importacion_TU_CODIGO_Final.csv`.
+
+### 📥 Importar el CSV en la Extensión
+
+1. Abre la extensión y ve a la página de **Opciones**.
+2. En la parte superior, verás el botón **"Importar Configuración"** (o similar).
+3. Haz clic y selecciona el archivo CSV que acabas de descargar.
+4. La extensión cargará automáticamente todas tus tareas y horarios según la planificación del mes.
+5. ¡Listo! Ahora puedes usar la extensión para incurrir tus horas diarias.
+
+### 💡 Ventajas de este Método
+
+- ✅ **Planificación Visual**: Mantén tu calendario mensual con colores en Google Sheets.
+- ✅ **Actualización Rápida**: Genera un nuevo CSV cada vez que cambies tu planificación.
+- ✅ **Sincronización**: Importa el CSV en la extensión y tus datos estarán siempre actualizados.
+- ✅ **Respaldo**: Tu planificación está guardada en la nube de Google.
+
+---
+
 ## ✍️ Autor
 
 Desarrollado por José Luis Guidú Navas.
