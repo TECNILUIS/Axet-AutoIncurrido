@@ -40,7 +40,7 @@
     // --- Carga Asíncrona de Configuración ---
     async function loadConfig() {
         try {
-            const storage = await chrome.storage.sync.get({ configV2: null });
+            const storage = await chrome.storage.local.get({ configV2: null });
             const config = storage.configV2;
             if (!config || !config.proyectos || !config.planDiario || config.sdaComun === undefined || config.horasEsperadasDiarias === undefined) {
                  throw new Error("Configuración V2 inválida o no encontrada. Por favor, abre Opciones, configura (o importa tu CSV/JSON) y guarda.");

@@ -37,7 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentWeekStartDate = null;
 
     // Mapeo de iniciales CSV a Tipos de Tarea y orden
-    const tipoTareaMap = { 'a': 'Diseño', 'z': 'Construcción', 'm': 'Pruebas', 'v': 'Despliegue' };
+    const tipoTareaMap = { 'a': 'Diseño', 'b': 'Construcción', 'c': 'Pruebas', 'd': 'Despliegue' };
     const tipoTareaOrder = { 'Diseño': 1, 'Construcción': 2, 'Pruebas': 3, 'Despliegue': 4 };
 
     // --- FUNCIONES AUXILIARES FECHAS ---
@@ -58,26 +58,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- FUNCIÓN DE CÁLCULO (LOCAL A OPTIONS.JS) ---
     /**
-     * CALCULA horas/minutos (v2.5: Número = Horas Fijas exactas, Solo Color = Reparto).
+     * CALCULA horas/minutos (v2.7: Número = Horas Fijas exactas, Solo Color = Reparto).
      * @param {Date} fecha - Objeto Date del día (medianoche local).
      * @param {object} configBase - Configuración con planDiario BRUTO {proyectos, sdaComun, horasEsperadasDiarias, planDiario: {..., valorCSV}}.
      * @returns {object|null} - Objeto { proyectoIndex: {horas: string, minutos: string} } o null si no laborable.
      */
-    function calcularHorasParaDia_v2_5(fecha, configBase) {
+    function calcularHorasParaDia_v2_7(fecha, configBase) {
         fecha = new Date(fecha); fecha.setHours(0, 0, 0, 0);
         const todayStr = formatDateYYYYMMDD(fecha);
 
         if (!configBase || !configBase.proyectos || !configBase.horasEsperadasDiarias || !configBase.planDiario) {
-            console.error("[Calc Horas v2.5 Options] Config inválida para cálculo."); return null;
+            return null;
         }
 
         const horasEsperadasHoyStr = (configBase.horasEsperadasDiarias[todayStr] || '').toUpperCase();
-        if (!horasEsperadasHoyStr || isNaN(parseInt(horasEsperadasHoyStr, 10))) { return null; }
-        const horasTotalesNum = parseInt(horasEsperadasHoyStr, 10);
+        // Normalizar horas esperadas (cambiar coma por punto)
+        const horasNorm = horasEsperadasHoyStr.replace(',', '.');
+        if (!horasNorm || isNaN(parseFloat(horasNorm))) { return null; }
+        
+        const horasTotalesNum = parseFloat(horasNorm);
         if (horasTotalesNum <= 0) { return {}; }
-        let minutosTotalesDia = horasTotalesNum * 60;
+        let minutosTotalesDia = Math.round(horasTotalesNum * 60);
 
-        const reglasBrutasDelDia = configBase.planDiario[todayStr] || []; // Usar planDiario BRUTO
+        const reglasBrutasDelDia = configBase.planDiario[todayStr] || [];
         if (reglasBrutasDelDia.length === 0) { return {}; }
 
         let totalMinutosFijos = 0;
@@ -87,20 +90,30 @@ document.addEventListener('DOMContentLoaded', () => {
         reglasBrutasDelDia.forEach(regla => {
             const idx = regla.proyectoIndex;
             if (idx === undefined || idx < 0 || idx >= configBase.proyectos.length) return;
-            const valor = regla.valorCSV || ''; // Leer valorCSV
-            const valorLower = valor.toLowerCase();
-            const matchNumero = valor.match(/(\d+(\.\d+)?)/); // Número al inicio o solo
-            const horasFijasNum = matchNumero ? parseFloat(matchNumero[1]) : 0;
-            const tieneColor = regla.tipoTarea !== null; // tipoTarea solo se setea si hay inicial de color
+            const valor = regla.valorCSV || '';
+            
+            // --- PARSEO DECIMAL ROBUSTO (4,5 -> 4.5) ---
+            // Busca número, permitiendo punto o coma
+            const matchNumero = valor.match(/(\d+([.,]\d+)?)/);
+            let horasFijasNum = 0;
+            
+            if (matchNumero) {
+                // Reemplazar coma por punto para que JS lo entienda
+                const numeroString = matchNumero[0].replace(',', '.');
+                horasFijasNum = parseFloat(numeroString);
+            }
+            // -------------------------------------------
 
-            if (horasFijasNum > 0) { // Si hay número, son horas fijas
+            const tieneColor = regla.tipoTarea !== null;
+
+            if (horasFijasNum > 0) {
+                // Convertir horas decimales a minutos (ej: 4.5 * 60 = 270)
                 const minutosFijos = Math.round(horasFijasNum * 60);
                 minutosFijosPorProyecto[idx] = minutosFijos;
                 totalMinutosFijos += minutosFijos;
-            } else if (tieneColor) { // Si NO hay número Y SÍ tiene color -> participa en reparto
+            } else if (tieneColor) {
                 participantesRepartoIndices.push(idx);
             }
-            // Caso '1Az': Ya se asignó fijo, NO participa en reparto con esta lógica
         });
 
         let minutosARepartir = minutosTotalesDia - totalMinutosFijos;
@@ -108,13 +121,9 @@ document.addEventListener('DOMContentLoaded', () => {
         let minutosRepartoIndividual = 0;
         if (participantesRepartoIndices.length > 0 && minutosARepartir > 0) {
             minutosRepartoIndividual = minutosARepartir / participantesRepartoIndices.length;
-        } else if (minutosARepartir > 0) {
-             console.warn(`[Calc Options v2.5] ${todayStr}: Sobraron ${minutosARepartir} min.`);
         }
 
         const resultadoCalculado = {};
-        let minutosTotalesAsignados = 0;
-        // Iterar sobre los índices de las reglas originales para mantener consistencia
         const proyectosDelDia = [...new Set(reglasBrutasDelDia.map(r => r.proyectoIndex).filter(idx => idx !== undefined))];
 
         proyectosDelDia.forEach(idx => {
@@ -123,21 +132,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 minutosFinales += minutosRepartoIndividual;
             }
             const minutosFinalesRedondeados = Math.round(minutosFinales);
-            minutosTotalesAsignados += minutosFinalesRedondeados;
+            
             if (minutosFinalesRedondeados > 0) {
+                // Convertir minutos totales a Horas y Minutos (ej: 270 -> 4h 30m)
+                const h = Math.floor(minutosFinalesRedondeados / 60);
+                const m = minutosFinalesRedondeados % 60;
+                
                 resultadoCalculado[idx] = {
-                    horas: String(Math.floor(minutosFinalesRedondeados / 60)),
-                    minutos: String(minutosFinalesRedondeados % 60)
+                    horas: String(h),
+                    minutos: String(m)
                 };
             }
         });
 
-        // Verificación redondeo (opcional)
-        if (Math.abs(minutosTotalesAsignados - minutosTotalesDia) > 1 && participantesRepartoIndices.length > 0) { /* ... warning ... */ }
-
-        return resultadoCalculado; // Devuelve { "0": {h, m}, "2": {h, m}, ... }
+        return resultadoCalculado;
     }
-
 
     // --- RENDERIZACIÓN ---
     function renderProjectList(proyectos = [], sdaGlobal = "", tecnologiaGlobal = "") {
@@ -312,40 +321,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- GUARDADO Y CARGA ---
     // Guarda la configuración COMPLETA (planDiario ya tiene horas calculadas)
+    // --- GUARDADO Y CARGA ---
     function saveOptions(configToSave) {
-        // Validar estructura v2.5
-        if (!configToSave || !configToSave.proyectos || configToSave.sdaComun === undefined ||
-            configToSave.tecnologiaComun === undefined ||
-            configToSave.horasEsperadasDiarias === undefined || configToSave.planDiario === undefined) {
-             if(window.showToast) window.showToast('Error: Configuración inválida V2.5.', 'error');
-             console.error("Config inválida para guardar:", configToSave); return;
+        if (!configToSave || !configToSave.proyectos) {
+             if(window.showToast) window.showToast('Error: Configuración inválida.', 'error'); return;
         }
-        // Ya no necesitamos precalcular aquí, se hizo durante la importación
-        chrome.storage.sync.set({ configV2: configToSave }, () => {
-            if (window.showToast) window.showToast('¡Configuración guardada!', 'success');
-            render(configToSave, 'save'); // Re-renderizar DESPUÉS de guardar
+        // CAMBIO: Usar 'local' en lugar de 'sync'
+        chrome.storage.local.set({ configV2: configToSave }, () => {
+            // Verificar si hubo error al guardar (por si acaso excede local, aunque es difícil)
+            if (chrome.runtime.lastError) {
+                console.error("Error guardando en local:", chrome.runtime.lastError);
+                if (window.showToast) window.showToast('Error al guardar: ' + chrome.runtime.lastError.message, 'error');
+            } else {
+                if (window.showToast) window.showToast('¡Configuración guardada!', 'success');
+                render(configToSave, 'save');
+            }
         });
     }
      // Carga la configuración completa y renderiza
     function restoreOptions() {
-        chrome.storage.sync.get({ configV2: defaultConfig }, items => {
-            const storedConfig = items.configV2 || defaultConfig;
-            const normalizedConfig = {
-                ...defaultConfig,
-                ...storedConfig,
-                proyectos: storedConfig.proyectos || defaultConfig.proyectos,
-                horasEsperadasDiarias: storedConfig.horasEsperadasDiarias || defaultConfig.horasEsperadasDiarias,
-                planDiario: storedConfig.planDiario || defaultConfig.planDiario,
-                employeeId: storedConfig.employeeId || defaultConfig.employeeId
-            };
-            if (normalizedConfig.tecnologiaComun === undefined) normalizedConfig.tecnologiaComun = '';
-            render(normalizedConfig, 'load');
+        // CAMBIO: Usar 'local' en lugar de 'sync'
+        chrome.storage.local.get({ configV2: defaultConfig }, items => {
+            render(items.configV2 || defaultConfig, 'load');
         });
     }
 
     // --- IMPORTAR / EXPORTAR JSON ---
     function exportConfig() {
-        chrome.storage.sync.get({ configV2: defaultConfig }, items => {
+        chrome.storage.local.get({ configV2: defaultConfig }, items => {
             const configToExport = items.configV2 || defaultConfig; // Exportar config actual o default
             const dataStr = JSON.stringify(configToExport, null, 2);
             const dataBlob = new Blob([dataStr], { type: 'application/json' });
@@ -384,8 +387,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!employeeId) { if (window.showToast) window.showToast('Introduce tu ID.', 'error'); return; }
         if (!window.Papa) { if (window.showToast) window.showToast('Error: PapaParse no cargado.', 'error'); return; }
         // Verificar si la función de cálculo está disponible ANTES de parsear
-        if (typeof calcularHorasParaDia_v2_5 !== 'function') { // Asegurarse que usa la v2.5
-            console.error("Error: Falta calcularHorasParaDia_v2_5 para pre-cálculo.");
+        if (typeof calcularHorasParaDia_v2_7 !== 'function') { // Asegurarse que usa la v2.5
+            console.error("Error: Falta calcularHorasParaDia_v2_7 para pre-cálculo.");
             if(window.showToast) window.showToast("Error interno: Falta función de cálculo v2.5.", "error"); return;
          }
 
@@ -415,7 +418,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                  const fecha = new Date(dateStr + 'T12:00:00'); // Mediodía local
                                  if (isNaN(fecha)) continue;
                                  // Calcular horas para este día usando v2.5
-                                 const horasCalculadasDia = calcularHorasParaDia_v2_5(fecha, configBase); // LLAMADA A v2.5
+                                 const horasCalculadasDia = calcularHorasParaDia_v2_7(fecha, configBase); // LLAMADA A v2.5
 
                                  if (horasCalculadasDia && Object.keys(horasCalculadasDia).length > 0) {
                                      // Formatear para el planDiario final
@@ -631,7 +634,7 @@ document.addEventListener('DOMContentLoaded', () => {
     clearAllBtn.addEventListener('click', () => {
         // Show confirmation dialog
         if (confirm("¿Estás MUY seguro de que quieres borrar TODA la configuración guardada?\nEsta acción no se puede deshacer y tendrás que volver a importar tu CSV.")) {
-            chrome.storage.sync.clear(() => {
+            chrome.storage.local.clear(() => {
                 const error = chrome.runtime.lastError;
                 if (error) {
                     console.error("Error al borrar storage:", error);
