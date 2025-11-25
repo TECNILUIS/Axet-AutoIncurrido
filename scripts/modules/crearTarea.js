@@ -578,8 +578,8 @@ async function crearTarea(tarea, config) {
         botonSeleccionarFeature.click();
         console.log("[Crear Tarea] Paso 6: Botón 'Seleccionar' pulsado.");
 
-        // --- PASO 7: Selección de tecnología (solo para Construcción) ---
-        if (lastSelectedTaskType !== 'Construcción') {
+        // --- PASO 7: Selección de tecnología (no para Diseño) ---
+        if (lastSelectedTaskType == 'Diseño') {
             console.log(`[Crear Tarea] Paso 7: Tipo de tarea '${lastSelectedTaskType}' no requiere tecnología específica. Saltando...`);
         } else {
             // Espera fija de 2 segundos antes del Paso 7

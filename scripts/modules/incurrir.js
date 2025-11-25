@@ -166,7 +166,7 @@ async function incurrirTareas(fechaParaIncurrir, tareasAIncurrir, config) {
                         await waitForCondition(() => {
                             const horasActuales = getHorasActuales();
                             return horasActuales !== null && horasActuales !== horasAntesDeIncurrir;
-                        }, 10000, "actualización contador post-creación");
+                        }, 15000, "actualización contador post-creación");
                         
                         console.log(`[Incurrir] [ÉXITO] Tarea ${tareaCounter} (creada) incurrida. Horas ahora: ${getHorasActuales()}`);
                         // La tarea está lista, saltamos al siguiente item del bucle 'for'
