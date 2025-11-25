@@ -29,7 +29,10 @@ document.addEventListener('DOMContentLoaded', () => {
         tecnologiaComun: "",
         horasEsperadasDiarias: {}, // Objeto { 'YYYY-MM-DD': 'horas/codigo', ... }
         planDiario: {}, // Objeto { 'YYYY-MM-DD': [{ proyectoIndex, tipoTarea, horas, minutos }, ...], ... } // Horas PRE-CALCULADAS
-        employeeId: "" // ID del empleado guardado
+        employeeId: "", // ID del empleado guardado
+        overrideEnabled: false, // Toggle para activar/desactivar overrides
+        overrideHoursReducido: null, // Override para horario Reducido (Verano/Viernes)
+        overrideHoursNormal: null // Override para horario Normal (Resto del año)
     };
 
     let currentProyectos = []; let currentSdaComun = "";
@@ -76,7 +79,22 @@ document.addEventListener('DOMContentLoaded', () => {
         const horasNorm = horasEsperadasHoyStr.replace(',', '.');
         if (!horasNorm || isNaN(parseFloat(horasNorm))) { return null; }
         
-        const horasTotalesNum = parseFloat(horasNorm);
+        let horasTotalesNum = parseFloat(horasNorm);
+        
+        // Apply override based on date (summer/Friday vs rest of year) only if enabled
+        if (configBase.overrideEnabled) {
+            const dayOfWeek = fecha.getDay();
+            const month = fecha.getMonth();
+            const day = fecha.getDate();
+            const isFriday = dayOfWeek === 5;
+            const isSummer = month === 6 || month === 7 || (month === 8 && day <= 15);
+            
+            if ((isFriday || isSummer) && configBase.overrideHoursReducido !== null && configBase.overrideHoursReducido !== undefined) {
+                horasTotalesNum = parseFloat(configBase.overrideHoursReducido);
+            } else if (!isFriday && !isSummer && configBase.overrideHoursNormal !== null && configBase.overrideHoursNormal !== undefined) {
+                horasTotalesNum = parseFloat(configBase.overrideHoursNormal);
+            }
+        }
         if (horasTotalesNum <= 0) { return {}; }
         let minutosTotalesDia = Math.round(horasTotalesNum * 60);
 
@@ -224,7 +242,31 @@ document.addEventListener('DOMContentLoaded', () => {
             if (specialDayText) {
                 dayColumn.innerHTML += `<div class="holiday-vacation-text">${specialDayText}</div>`;
             } else { // Mostrar horas y tareas
-                dayColumn.innerHTML += `<span class="horas">(${horasDisplay}${isWorkDay?'h':''})</span>`;
+                // Calculate if override is active for this day
+                let tooltipText = '';
+                if (isWorkDay && currentConfigData && currentConfigData.overrideEnabled) {
+                    const dayOfWeek = dayDate.getDay();
+                    const month = dayDate.getMonth();
+                    const day = dayDate.getDate();
+                    const isFriday = dayOfWeek === 5;
+                    const isSummer = month === 6 || month === 7 || (month === 8 && day <= 15);
+                    
+                    const originalHours = horasEsperadas.replace(',', '.');
+                    let overrideValue = null;
+                    
+                    if ((isFriday || isSummer) && currentConfigData.overrideHoursReducido !== null && currentConfigData.overrideHoursReducido !== undefined) {
+                        overrideValue = currentConfigData.overrideHoursReducido;
+                    } else if (!isFriday && !isSummer && currentConfigData.overrideHoursNormal !== null && currentConfigData.overrideHoursNormal !== undefined) {
+                        overrideValue = currentConfigData.overrideHoursNormal;
+                    }
+                    
+                    if (overrideValue !== null && originalHours && !isNaN(parseFloat(originalHours))) {
+                        tooltipText = `CSV: ${originalHours}h → Override: ${overrideValue}h`;
+                    }
+                }
+                
+                const hoursSpan = tooltipText ? `<span class="horas" title="${tooltipText}">(${horasDisplay}${isWorkDay?'h':''})</span>` : `<span class="horas">(${horasDisplay}${isWorkDay?'h':''})</span>`;
+                dayColumn.innerHTML += hoursSpan;
                 // Mostrar tareas si es laborable Y hay plan calculado
                 if (isWorkDay && planCalculadoDelDia.length > 0) {
                     const taskList = document.createElement('ul');
@@ -267,6 +309,18 @@ document.addEventListener('DOMContentLoaded', () => {
                      dayColumn.innerHTML += `<span class="no-plan">${horasDisplay}</span>`;
                 }
             } // Fin else (no es V o F)
+            
+            // Añadir botones de edición/añadir para días laborables
+            if (isWorkDay || horasEsperadas === '') {
+                const actionsDiv = document.createElement('div');
+                actionsDiv.className = 'day-actions';
+                actionsDiv.innerHTML = `
+                    <button class="day-action-btn edit-btn" data-date="${dayStrYYYYMMDD}" title="Editar tareas">✏️</button>
+                    <button class="day-action-btn add-btn" data-date="${dayStrYYYYMMDD}" title="Añadir tarea">➕</button>
+                `;
+                dayColumn.appendChild(actionsDiv);
+            }
+            
             weeklyPlanContainerEl.appendChild(dayColumn);
         } // Fin for
          const hasPlan = Object.keys(currentConfigData.planDiario || {}).length > 0; // Usar planDiario
@@ -282,6 +336,28 @@ document.addEventListener('DOMContentLoaded', () => {
         if (summaryTechEl) summaryTechEl.textContent = config.tecnologiaComun ? config.tecnologiaComun : 'No definida';
         if (technologyInput) technologyInput.value = config.tecnologiaComun || '';
         if (employeeIdInput) employeeIdInput.value = config.employeeId || '';
+        
+        // Update override inputs and toggle
+        const overrideEnabledInput = document.getElementById('override-enabled');
+        const overrideSummerFridayInput = document.getElementById('override-hours-summer-friday');
+        const overrideRestOfYearInput = document.getElementById('override-hours-rest-of-year');
+        const overrideTable = document.getElementById('override-table');
+        
+        if (overrideEnabledInput) {
+            overrideEnabledInput.checked = config.overrideEnabled || false;
+        }
+        if (overrideSummerFridayInput) {
+            overrideSummerFridayInput.value = config.overrideHoursReducido !== null && config.overrideHoursReducido !== undefined ? config.overrideHoursReducido : '';
+            overrideSummerFridayInput.disabled = !config.overrideEnabled;
+        }
+        if (overrideRestOfYearInput) {
+            overrideRestOfYearInput.value = config.overrideHoursNormal !== null && config.overrideHoursNormal !== undefined ? config.overrideHoursNormal : '';
+            overrideRestOfYearInput.disabled = !config.overrideEnabled;
+        }
+        if (overrideTable) {
+            overrideTable.style.opacity = config.overrideEnabled ? '1' : '0.5';
+            overrideTable.style.pointerEvents = config.overrideEnabled ? 'auto' : 'none';
+        }
         summaryProyectosCountEl.textContent = config.proyectos?.length || 0;
         const planDaysCount = Object.keys(config.planDiario || {}).length; // Contar días en planDiario
         summaryDiasCountEl.textContent = planDaysCount;
@@ -342,7 +418,17 @@ document.addEventListener('DOMContentLoaded', () => {
     function restoreOptions() {
         // CAMBIO: Usar 'local' en lugar de 'sync'
         chrome.storage.local.get({ configV2: defaultConfig }, items => {
-            render(items.configV2 || defaultConfig, 'load');
+            const cfg = items.configV2 || defaultConfig;
+            // Migración desde nombres antiguos si existen
+            if (cfg.overrideHoursReducido === undefined && cfg.overrideHoursSummerFriday !== undefined) {
+                cfg.overrideHoursReducido = cfg.overrideHoursSummerFriday;
+            }
+            if (cfg.overrideHoursNormal === undefined && cfg.overrideHoursRestOfYear !== undefined) {
+                cfg.overrideHoursNormal = cfg.overrideHoursRestOfYear;
+            }
+            delete cfg.overrideHoursSummerFriday;
+            delete cfg.overrideHoursRestOfYear;
+            render(cfg, 'load');
         });
     }
 
@@ -372,6 +458,15 @@ document.addEventListener('DOMContentLoaded', () => {
                      if (importedConfig.tecnologiaComun === undefined) {
                          importedConfig.tecnologiaComun = '';
                      }
+                     // Migrar claves antiguas si existen
+                     if (importedConfig.overrideHoursReducido === undefined && importedConfig.overrideHoursSummerFriday !== undefined) {
+                         importedConfig.overrideHoursReducido = importedConfig.overrideHoursSummerFriday;
+                     }
+                     if (importedConfig.overrideHoursNormal === undefined && importedConfig.overrideHoursRestOfYear !== undefined) {
+                         importedConfig.overrideHoursNormal = importedConfig.overrideHoursRestOfYear;
+                     }
+                     delete importedConfig.overrideHoursSummerFriday;
+                     delete importedConfig.overrideHoursRestOfYear;
                      // Asumimos que el JSON importado ya tiene las horas calculadas en planDiario
                      saveOptions(importedConfig); // Guardar Y renderizar
                      if (window.showToast) window.showToast('¡Config JSON importada y guardada!', 'success');
@@ -566,7 +661,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (horasRow.length > 0) {
              for (const colIndex in dateColumns) {
                  if (colIndex < horasRow.length && horasRow[colIndex] !== undefined) {
-                     horasEsperadas[dateColumns[colIndex]] = (horasRow[colIndex] || '').trim();
+                     let valorHoras = (horasRow[colIndex] || '').trim();
+                     // Normalize "0" to "V" (vacation)
+                     if (valorHoras === "0") {
+                         valorHoras = "V";
+                     }
+                     horasEsperadas[dateColumns[colIndex]] = valorHoras;
                  }
              }
         }
@@ -631,6 +731,58 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Event listeners for override toggle and hour inputs
+    const overrideEnabledInput = document.getElementById('override-enabled');
+    const overrideSummerFridayInput = document.getElementById('override-hours-summer-friday');
+    const overrideRestOfYearInput = document.getElementById('override-hours-rest-of-year');
+    const overrideTable = document.getElementById('override-table');
+
+    if (overrideEnabledInput) {
+        overrideEnabledInput.addEventListener('change', (event) => {
+            const isEnabled = event.target.checked;
+            const updatedConfig = {
+                ...currentConfigData,
+                overrideEnabled: isEnabled
+            };
+            
+            // Update UI immediately
+            if (overrideSummerFridayInput) overrideSummerFridayInput.disabled = !isEnabled;
+            if (overrideRestOfYearInput) overrideRestOfYearInput.disabled = !isEnabled;
+            if (overrideTable) {
+                overrideTable.style.opacity = isEnabled ? '1' : '0.5';
+                overrideTable.style.pointerEvents = isEnabled ? 'auto' : 'none';
+            }
+            
+            saveOptions(updatedConfig);
+        });
+    }
+
+    if (overrideSummerFridayInput) {
+        overrideSummerFridayInput.addEventListener('change', (event) => {
+            const value = event.target.value.trim();
+            const numValue = value === '' ? null : parseFloat(value);
+            if ((currentConfigData.overrideHoursReducido === null && numValue === null) || currentConfigData.overrideHoursReducido === numValue) return;
+            const updatedConfig = {
+                ...currentConfigData,
+                overrideHoursReducido: numValue
+            };
+            saveOptions(updatedConfig);
+        });
+    }
+
+    if (overrideRestOfYearInput) {
+        overrideRestOfYearInput.addEventListener('change', (event) => {
+            const value = event.target.value.trim();
+            const numValue = value === '' ? null : parseFloat(value);
+            if ((currentConfigData.overrideHoursNormal === null && numValue === null) || currentConfigData.overrideHoursNormal === numValue) return;
+            const updatedConfig = {
+                ...currentConfigData,
+                overrideHoursNormal: numValue
+            };
+            saveOptions(updatedConfig);
+        });
+    }
+
     clearAllBtn.addEventListener('click', () => {
         // Show confirmation dialog
         if (confirm("¿Estás MUY seguro de que quieres borrar TODA la configuración guardada?\nEsta acción no se puede deshacer y tendrás que volver a importar tu CSV.")) {
@@ -671,4 +823,180 @@ document.addEventListener('DOMContentLoaded', () => {
              console.log(`[Toast Fallback] (${type}): ${message}`);
          };
      }
+
+    // --- GESTIÓN DE MODAL PARA EDITAR/AÑADIR TAREAS ---
+    const taskModal = document.getElementById('task-modal');
+    const modalTitle = document.getElementById('modal-title');
+    const modalDate = document.getElementById('modal-date');
+    const taskListEl = document.getElementById('task-list');
+    const addTaskBtn = document.getElementById('add-task-btn');
+    const saveTasksBtn = document.getElementById('save-tasks-btn');
+    const cancelModalBtn = document.getElementById('cancel-modal-btn');
+    
+    let currentEditingDate = null;
+    let currentTasks = [];
+
+    // Event delegation para botones de editar/añadir en los días
+    document.addEventListener('click', (e) => {
+        const editBtn = e.target.closest('.edit-btn');
+        const addBtn = e.target.closest('.add-btn');
+        
+        if (editBtn || addBtn) {
+            const dateStr = (editBtn || addBtn).dataset.date;
+            openTaskModal(dateStr, addBtn ? 'add' : 'edit');
+        }
+    });
+
+    function openTaskModal(dateStr, mode = 'edit') {
+        currentEditingDate = dateStr;
+        const date = new Date(dateStr + 'T12:00:00');
+        const dateFormatted = date.toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        
+        modalTitle.textContent = mode === 'add' ? 'Añadir Tarea' : 'Editar Tareas';
+        modalDate.textContent = dateFormatted;
+        
+        // Cargar tareas existentes del día (desde planDiario bruto si existe, o crear vacío)
+        const existingPlan = currentConfigData.planDiario[dateStr] || [];
+        
+        // Convertir plan calculado a formato editable (necesitamos el bruto)
+        // Para esto, necesitamos reconstruir desde lo que tenemos
+        currentTasks = existingPlan.map(task => ({
+            proyectoIndex: task.proyectoIndex,
+            tipoTarea: task.tipoTarea || '',
+            horas: task.horas || '0',
+            minutos: task.minutos || '0'
+        }));
+        
+        if (mode === 'add' || currentTasks.length === 0) {
+            // Añadir una tarea vacía para empezar
+            currentTasks.push({
+                proyectoIndex: 0,
+                tipoTarea: 'Construcción',
+                horas: '0',
+                minutos: '0'
+            });
+        }
+        
+        renderTaskList();
+        taskModal.classList.add('active');
+    }
+
+    function renderTaskList() {
+        taskListEl.innerHTML = '';
+        
+        currentTasks.forEach((task, index) => {
+            const taskItem = document.createElement('div');
+            taskItem.className = 'task-item';
+            
+            const projectOptions = currentConfigData.proyectos.map((p, idx) => 
+                `<option value="${idx}" ${task.proyectoIndex === idx ? 'selected' : ''}>${p.codigo}</option>`
+            ).join('');
+            
+            const tipoOptions = ['Diseño', 'Construcción', 'Pruebas', 'Despliegue'].map(tipo =>
+                `<option value="${tipo}" ${task.tipoTarea === tipo ? 'selected' : ''}>${tipo}</option>`
+            ).join('');
+            
+            taskItem.innerHTML = `
+                <select class="task-project" data-index="${index}">
+                    ${projectOptions}
+                </select>
+                <select class="task-tipo" data-index="${index}">
+                    ${tipoOptions}
+                </select>
+                <input type="number" class="task-horas" data-index="${index}" value="${task.horas}" min="0" step="1" placeholder="Horas">
+                <input type="number" class="task-minutos" data-index="${index}" value="${task.minutos}" min="0" max="59" step="1" placeholder="Min">
+                <button class="task-remove" data-index="${index}">🗑️</button>
+            `;
+            
+            taskListEl.appendChild(taskItem);
+        });
+        
+        // Event listeners para actualizar datos
+        taskListEl.querySelectorAll('.task-project').forEach(select => {
+            select.addEventListener('change', (e) => {
+                const idx = parseInt(e.target.dataset.index);
+                currentTasks[idx].proyectoIndex = parseInt(e.target.value);
+            });
+        });
+        
+        taskListEl.querySelectorAll('.task-tipo').forEach(select => {
+            select.addEventListener('change', (e) => {
+                const idx = parseInt(e.target.dataset.index);
+                currentTasks[idx].tipoTarea = e.target.value;
+            });
+        });
+        
+        taskListEl.querySelectorAll('.task-horas').forEach(input => {
+            input.addEventListener('change', (e) => {
+                const idx = parseInt(e.target.dataset.index);
+                currentTasks[idx].horas = e.target.value;
+            });
+        });
+        
+        taskListEl.querySelectorAll('.task-minutos').forEach(input => {
+            input.addEventListener('change', (e) => {
+                const idx = parseInt(e.target.dataset.index);
+                currentTasks[idx].minutos = e.target.value;
+            });
+        });
+        
+        taskListEl.querySelectorAll('.task-remove').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const idx = parseInt(e.target.dataset.index);
+                currentTasks.splice(idx, 1);
+                renderTaskList();
+            });
+        });
+    }
+
+    addTaskBtn.addEventListener('click', () => {
+        currentTasks.push({
+            proyectoIndex: 0,
+            tipoTarea: 'Construcción',
+            horas: '0',
+            minutos: '0'
+        });
+        renderTaskList();
+    });
+
+    saveTasksBtn.addEventListener('click', () => {
+        // Guardar las tareas editadas en planDiario
+        const updatedConfig = { ...currentConfigData };
+        
+        // Filtrar tareas con tiempo > 0
+        const validTasks = currentTasks.filter(task => 
+            parseInt(task.horas) > 0 || parseInt(task.minutos) > 0
+        );
+        
+        if (validTasks.length > 0) {
+            updatedConfig.planDiario[currentEditingDate] = validTasks.map(task => ({
+                proyectoIndex: task.proyectoIndex,
+                tipoTarea: task.tipoTarea,
+                horas: task.horas,
+                minutos: task.minutos
+            }));
+        } else {
+            // Si no hay tareas válidas, eliminar el día del plan
+            delete updatedConfig.planDiario[currentEditingDate];
+        }
+        
+        saveOptions(updatedConfig);
+        closeTaskModal();
+        if (window.showToast) window.showToast('Tareas guardadas correctamente', 'success');
+    });
+
+    cancelModalBtn.addEventListener('click', closeTaskModal);
+    
+    taskModal.addEventListener('click', (e) => {
+        if (e.target === taskModal) {
+            closeTaskModal();
+        }
+    });
+
+    function closeTaskModal() {
+        taskModal.classList.remove('active');
+        currentEditingDate = null;
+        currentTasks = [];
+    }
+
 });

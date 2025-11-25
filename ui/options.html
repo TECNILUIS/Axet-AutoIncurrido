@@ -148,6 +148,152 @@
             background-color: #f0f7ff;
             box-shadow: 0 0 5px rgba(0,123,255,0.3);
         }
+        
+        /* --- Estilos para iconos de edición --- */
+        .day-actions {
+            display: flex;
+            gap: 4px;
+            justify-content: center;
+            margin-top: 6px;
+            padding-top: 6px;
+            border-top: 1px solid #eee;
+        }
+        .day-action-btn {
+            background: none;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            padding: 4px 8px;
+            cursor: pointer;
+            font-size: 14px;
+            color: #555;
+            transition: all 0.2s;
+        }
+        .day-action-btn:hover {
+            background-color: #f0f0f0;
+            border-color: #999;
+            color: #000;
+        }
+        .day-action-btn.edit-btn:hover {
+            background-color: #e3f2fd;
+            border-color: #2196f3;
+            color: #1976d2;
+        }
+        .day-action-btn.add-btn:hover {
+            background-color: #e8f5e9;
+            border-color: #4caf50;
+            color: #2e7d32;
+        }
+        
+        /* --- Modal para editar/añadir tareas --- */
+        .task-modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            align-items: center;
+            justify-content: center;
+        }
+        .task-modal.active {
+            display: flex;
+        }
+        .task-modal-content {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        .task-modal h3 {
+            margin-top: 0;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+        }
+        .task-form-group {
+            margin-bottom: 15px;
+        }
+        .task-form-group label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+        .task-form-group select,
+        .task-form-group input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        .task-list {
+            margin: 15px 0;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .task-item {
+            display: grid;
+            grid-template-columns: 2fr 1.5fr 1fr 1fr auto;
+            gap: 8px;
+            align-items: center;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 8px;
+            background: #f9f9f9;
+        }
+        .task-item-label {
+            font-size: 13px;
+            color: #666;
+        }
+        .task-item input,
+        .task-item select {
+            padding: 4px 6px;
+            font-size: 13px;
+        }
+        .task-item button {
+            padding: 4px 8px;
+            font-size: 12px;
+            background-color: #dc3545;
+        }
+        .task-item button:hover {
+            background-color: #c82333;
+        }
+        .modal-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 20px;
+            padding-top: 15px;
+            border-top: 1px solid #eee;
+        }
+        .modal-actions button {
+            padding: 10px 20px;
+        }
+        .modal-actions .btn-save {
+            background-color: #28a745;
+        }
+        .modal-actions .btn-save:hover {
+            background-color: #218838;
+        }
+        .modal-actions .btn-cancel {
+            background-color: #6c757d;
+        }
+        .modal-actions .btn-cancel:hover {
+            background-color: #5a6268;
+        }
+        .modal-actions .btn-add {
+            background-color: #007bff;
+        }
+        .modal-actions .btn-add:hover {
+            background-color: #0056b3;
+        }
         /* --- FIN Estilos Vista Semanal --- */
     </style>
 </head>
@@ -203,6 +349,35 @@
                 </select>
                 <small>Este valor se utilizará como tecnología por defecto al crear tareas de Construcción.</small>
             </div>
+            <div class="common-settings" style="flex-direction: column; gap:6px;">
+                <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                        <input type="checkbox" id="override-enabled" style="cursor:pointer;">
+                        <span style="font-weight:600;">Activar Override de Horas</span>
+                    </label>
+                </div>
+                <table id="override-table" style="width:100%; border-collapse: collapse; opacity:0.5; pointer-events:none;">
+                    <thead>
+                        <tr>
+                            <th style="text-align:left; padding:4px; border-bottom:1px solid #ddd; width:120px;">&nbsp;</th>
+                            <th style="text-align:center; padding:4px; border-bottom:1px solid #ddd;">Normal</th>
+                            <th style="text-align:center; padding:4px; border-bottom:1px solid #ddd;">Reducido</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <th style="text-align:left; padding:6px 4px; font-weight:600;">Override</th>
+                            <td style="text-align:center; padding:6px 4px;">
+                                <input type="number" id="override-hours-rest-of-year" step="0.1" placeholder="ej. 9.0" style="width:90%;" disabled>
+                            </td>
+                            <td style="text-align:center; padding:6px 4px;">
+                                <input type="number" id="override-hours-summer-friday" step="0.1" placeholder="ej. 7.0" style="width:90%;" disabled>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+                <small style="margin-top:4px;">Normal = resto del año · Reducido = Viernes y Verano (1 Jul - 15 Sep).</small>
+            </div>
             <div class="week-navigation">
                 <button id="prev-week" disabled>ᐊ Semana Anterior</button>
                 <span id="current-week-display">Semana (Importa CSV)</span>
@@ -234,6 +409,24 @@
             <span class="project-sda-display" style="font-size: 0.9em; color: #555;" title="SDATool Común Importado"></span>
             </div>
     </template>
+
+    <!-- Modal para editar/añadir tareas -->
+    <div id="task-modal" class="task-modal">
+        <div class="task-modal-content">
+            <h3 id="modal-title">Editar Tareas</h3>
+            <p id="modal-date" style="color: #666; margin-bottom: 15px;"></p>
+            
+            <div class="task-list" id="task-list">
+                <!-- Tareas dinámicas se insertan aquí -->
+            </div>
+            
+            <div class="modal-actions">
+                <button class="btn-add" id="add-task-btn">➕ Añadir Tarea</button>
+                <button class="btn-save" id="save-tasks-btn">💾 Guardar</button>
+                <button class="btn-cancel" id="cancel-modal-btn">✖ Cancelar</button>
+            </div>
+        </div>
+    </div>
 
     <script src="../scripts/shared/toast.js"></script> <script src="../lib/papaparse.min.js"></script> <script src="../scripts/options.js"></script>
 </body>
