@@ -1,341 +1,322 @@
-(async function() {
+// scripts/content.js v2.5 (Orquestador con carga bajo demanda y Observador Persistente)
+
+(function() {
     'use strict';
 
-    chrome.storage.sync.get(null, (storage) => {
-        console.log('[DEBUG] chrome.storage contents:', storage);
+    if (window.__axetContentScriptLoaded_v2_5) {
+        console.log("[Content Script] Orquestador v2.5 ya cargado. Omitiendo.");
+        return;
+    }
+    window.__axetContentScriptLoaded_v2_5 = true; // Flag único para esta versión
+    console.log("[Content Script] Orquestador v2.5 inicializando...");
 
-        let configuracionTareas = null;
-
-        // Preferimos la nueva clave canonical 'config'
-        if (storage.config && (storage.config.jornadas || storage.config.tasks)) {
-            const cfg = storage.config;
-            configuracionTareas = {
-                tasks: cfg.tasks || [],
-                jornadas: cfg.jornadas || { normal: [], reducida: [] },
-                jornadaReducidaActiva: cfg.jornadaReducidaActiva !== undefined ? cfg.jornadaReducidaActiva : true
-            };
-            console.log('[DEBUG] usando storage.config');
-        } else if (storage.tareasConfig && (storage.tareasConfig.jornadas || storage.tareasConfig.jornadaReducidaActiva !== undefined)) {
-            // Compatibilidad: migramos tareasConfig -> config, y luego usamos la estructura existente
-            console.log('[DEBUG] solo se detectó storage.tareasConfig, ejecutando migración a config...');
-            const t = storage.tareasConfig;
-            // Convertir tareasConfig a la forma 'config'
-            // asumimos que tareasConfig.jornadas.normal/reducida son arrays alineados con las tareas
-            const normal = [];
-            const reducida = [];
-            const tasks = [];
-
-            // tomamos el máximo entre la longitud de las listas para reconstruir tasks
-            const maxLen = Math.max((t.jornadas?.normal || []).length, (t.jornadas?.reducida || []).length);
-            for (let i = 0; i < maxLen; i++) {
-                const n = (t.jornadas?.normal || [])[i] || { nombre: '', codigoProyecto: '', horas: '', minutos: '' };
-                const r = (t.jornadas?.reducida || [])[i] || { nombre: '', codigoProyecto: '', horas: '', minutos: '' };
-                // preferir el nombre/código de normal, si no, el de reducida
-                const nombre = n.nombre || r.nombre || '';
-                const codigo = n.codigoProyecto || r.codigoProyecto || '';
-                tasks.push({ nombre, codigoProyecto: codigo });
-                normal.push({ horas: n.horas || '', minutos: n.minutos || '' });
-                reducida.push({ horas: r.horas || '', minutos: r.minutos || '' });
-            }
-
-            const newConfig = { tasks, jornadas: { normal, reducida }, jornadaReducidaActiva: Boolean(t.jornadaReducidaActiva) };
-            // Guardar la nueva config y continuar usando ésta
-            chrome.storage.sync.set({ config: newConfig }, () => {
-                console.log('[MIGRATION] config escrito desde tareasConfig');
-                // Eliminamos la clave legacy para evitar duplicación futura
-                chrome.storage.sync.remove('tareasConfig', () => {
-                    console.log('[MIGRATION] tareasConfig eliminada tras migración');
-                });
-            });
-
-            configuracionTareas = {
-                tasks: newConfig.tasks || [],
-                jornadas: newConfig.jornadas,
-                jornadaReducidaActiva: newConfig.jornadaReducidaActiva
-            };
-            console.log('[DEBUG] migrado configuracion desde tareasConfig');
+    /**
+     * Comprueba si los módulos de lógica están cargados.
+     * Si no, solicita al background script que los inyecte.
+     */
+    async function ensureModulesAreLoaded() {
+        if (window.__axetModulesLoaded === true) {
+            return; // Ya cargados
         }
 
-        if (!configuracionTareas) {
-            requestPageToast("Error: No se encontró la configuración válida. Abre las Opciones y guarda la configuración.");
-            console.error('[ERROR] No se encontró configuración válida en chrome.storage', storage);
-            return;
-        }
-        console.log('[DEBUG] configuracionTareas:', configuracionTareas);
-
-        const getTareasParaDia = (fecha = new Date()) => {
-            const diaSemana = fecha.getDay();
-            const mes = fecha.getMonth() + 1;
-            const diaMes = fecha.getDate();
-            if (diaSemana === 0 || diaSemana === 6) { requestPageToast("El día seleccionado es fin de semana."); return []; }
-
-            const esVerano = (mes > 7 || (mes === 7 && diaMes >= 1)) && (mes < 9 || (mes === 9 && diaMes <= 15));
-
-            // Usamos exclusivamente la nueva estructura 'jornadas'
-            if (!configuracionTareas.jornadas) {
-                requestPageToast("Error: Configuración inválida. Por favor, actualiza la configuración en Opciones.");
-                return [];
-            }
-
-            const jornadas = configuracionTareas.jornadas;
-            const jornadaReducidaActiva = Boolean(configuracionTareas.jornadaReducidaActiva);
-
-            // Seleccionamos la lista de tiempos a usar según el día
-            let tiemposSeleccionados = jornadas.normal || [];
-            if (jornadaReducidaActiva) {
-                if (diaSemana >= 1 && diaSemana <= 4) tiemposSeleccionados = jornadas.normal || [];
-                if (diaSemana === 5 || esVerano) tiemposSeleccionados = jornadas.reducida || [];
-            }
-
-            // Merge: combinamos la metadata de tareas (nombre, codigoProyecto) con los tiempos seleccionados
-            const tasksMeta = Array.isArray(configuracionTareas.tasks) && configuracionTareas.tasks.length ? configuracionTareas.tasks : [];
-            const maxLen = Math.max(tasksMeta.length, tiemposSeleccionados.length);
-            const resultado = [];
-            for (let i = 0; i < maxLen; i++) {
-                const meta = tasksMeta[i] || { nombre: `Tarea ${i + 1}`, codigoProyecto: '' };
-                const tiempo = tiemposSeleccionados[i] || { horas: '', minutos: '' };
-                resultado.push({ nombre: meta.nombre || `Tarea ${i + 1}`, codigoProyecto: meta.codigoProyecto || '', horas: tiempo.horas || '', minutos: tiempo.minutos || '' });
-            }
-            return resultado;
-        };
-
-        const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-        const findElementByText = (selector, texts, parent = document) => {
-            const textsToFind = Array.isArray(texts) ? texts : [texts];
-            return Array.from(parent.querySelectorAll(selector)).find(el => {
-                const content = el.textContent.trim();
-                return textsToFind.every(text => content.includes(text));
-            });
-        };
-        const waitForElement = (selector, text, parent = document, timeout = 15000) => new Promise((resolve, reject) => {
-            const interval = setInterval(() => {
-                const element = text ? findElementByText(selector, text, parent) : parent.querySelector(selector);
-                if (element) { clearInterval(interval); resolve(element); }
-            }, 100);
-            setTimeout(() => { clearInterval(interval); reject(new Error(`Elemento no encontrado: ${selector}`)); }, timeout);
-        });
-        const waitForCondition = (conditionFn, timeout = 10000, desc) => new Promise((resolve, reject) => {
-            const interval = setInterval(() => { if (conditionFn()) { clearInterval(interval); resolve(); } }, 100);
-            setTimeout(() => { clearInterval(interval); reject(new Error(`La condición '${desc}' no se cumplió.`)); }, timeout);
-        });
-
-        /**
-         * Helper to request a toast in the page context. Content scripts cannot directly call
-         * functions defined in the page context, so we dispatch a CustomEvent that the shared
-         * toast script listens for. If the shared script isn't present, inject it from
-         * web_accessible_resources.
-         */
-        function requestPageToast(message, type = 'info', duration = 4000) {
-            const dispatch = () => {
-                window.dispatchEvent(new CustomEvent('ExtensionShowToast', { detail: { message, type, duration } }));
-            };
-
-            // If page already has a listener (shared/toast.js), dispatch immediately
-            if (typeof window.showToast === 'function') {
-                dispatch();
-                return;
-            }
-
-            // Otherwise inject the shared toast script and dispatch after load
-            try {
-                const s = document.createElement('script');
-                s.src = chrome.runtime.getURL('scripts/shared/toast.js');
-                s.onload = () => {
-                    try { dispatch(); } catch (e) { console.warn('dispatch toast failed', e); }
-                    s.remove();
-                };
-                (document.head || document.documentElement).appendChild(s);
-            } catch (err) {
-                // As a last resort, show a simple alert
-                console.warn('[TOAST] Could not inject shared script, falling back to console.');
-                console.log(message);
-            }
-        }
-
-        async function incurrirTareas(fechaParaIncurrir) {
-            // Esta función no cambia
-            console.log(`[INFO] Iniciando proceso de incurridos para la fecha: ${fechaParaIncurrir.toLocaleDateString()}`);
-            const tareasAIncurrir = getTareasParaDia(fechaParaIncurrir);
-            if (tareasAIncurrir.length === 0) return;
-            
-            const getHorasActuales = () => {
-                 const h2 = findElementByText('h2', 'Horas cargadas:');
-                 if (!h2 || !h2.querySelector('.highlight')) return null;
-                 return h2.querySelector('.highlight').textContent.trim();
-            };
-
-            const totalMinutesToIncur = tareasAIncurrir.reduce((acc, tarea) => {
-                return acc + (parseInt(tarea.horas, 10) * 60) + parseInt(tarea.minutos, 10);
-            }, 0);
-            
-            const currentHoursText = getHorasActuales();
-            const [currentH, currentM] = currentHoursText.split(':').map(n => parseInt(n, 10));
-            const currentMinutesIncurred = (currentH * 60) + currentM;
-
-            if (currentMinutesIncurred >= totalMinutesToIncur) {
-                requestPageToast(`Ya se han incurrido ${currentHoursText} horas o más para esta fecha. El script se detendrá.`);
-                return;
-            }
-
-            let tareaCounter = 1;
-            for (const tarea of tareasAIncurrir) {
-                console.log(`\n--- TAREA ${tareaCounter}/${tareasAIncurrir.length}: ${tarea.nombre} (${tarea.codigoProyecto}) - ${tarea.horas}h ${tarea.minutos}m) ---`);
-                const horasAntesDeIncurrir = getHorasActuales();
-                const dropdown = await waitForElement('.formio-component-select .choices');
-                const selectionBox = dropdown.querySelector('.choices__list--single');
-                dropdown.dispatchEvent(new MouseEvent('click', { view: window, bubbles: true, cancelable: true }));
-
-                const textosABuscar = [`[${tarea.nombre}]`, tarea.codigoProyecto];
-                let opcionSeleccionar;
-                try {
-                    // Primero intentamos la búsqueda estricta (ambos textos)
-                    opcionSeleccionar = await waitForElement('div.choices__item[role="option"]', textosABuscar, dropdown, 3000);
-                } catch (errStrict) {
-                    // Si falla, intentamos varias estrategias más tolerantes
-                    const opciones = Array.from(dropdown.querySelectorAll('div.choices__item[role="option"]'));
-                    // 1) Buscar por nombre exacto (sin corchetes)
-                    opcionSeleccionar = opciones.find(o => o.textContent && o.textContent.includes(tarea.nombre));
-                    // 2) Si no, buscar por código
-                    if (!opcionSeleccionar && tarea.codigoProyecto) {
-                        opcionSeleccionar = opciones.find(o => o.textContent && o.textContent.includes(tarea.codigoProyecto));
-                    }
-                    // 3) Si no, buscar una coincidencia que contenga ambas partes en cualquier orden
-                    if (!opcionSeleccionar && tarea.codigoProyecto) {
-                        opcionSeleccionar = opciones.find(o => {
-                            const txt = (o.textContent || '').trim();
-                            return txt.includes(tarea.codigoProyecto) && txt.includes(tarea.nombre);
-                        });
-                    }
-
-                    if (!opcionSeleccionar) {
-                        const mensaje = `Tarea "${tarea.nombre}" (código ${tarea.codigoProyecto}) no encontrada en el desplegable. Comprueba que existe exactamente en la página.`;
-                        console.error('[ERROR] Tarea configurada no encontrada tras múltiples intentos:', tarea, { dropdownOptionsCount: opciones.length });
-                        requestPageToast(mensaje, 'error');
-                        return; // Salimos de incurrirTareas para no continuar con el proceso
-                    }
-                }
-                // Simular selección sobre la opción encontrada
-                opcionSeleccionar.dispatchEvent(new MouseEvent('mousedown', { view: window, bubbles: true, cancelable: true }));
-                opcionSeleccionar.dispatchEvent(new MouseEvent('click', { view: window, bubbles: true, cancelable: true }));
-
-                await waitForCondition(() => selectionBox.textContent.trim().includes(tarea.nombre), 5000, `selección de '${tarea.nombre}'`);
-                
-                const hoursInput = document.querySelector('input[name="data[container1][horas]"]');
-                hoursInput.value = tarea.horas;
-                hoursInput.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
-
-                const minutesInput = document.querySelector('input[name="data[container1][minutos]"]');
-                minutesInput.value = tarea.minutos;
-                minutesInput.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
-
-                await sleep(300);
-
-                const incurrirButton = document.querySelector('button.incurrirBoton');
-                incurrirButton.dispatchEvent(new MouseEvent('mousedown', { view: window, bubbles: true, cancelable: true }));
-                incurrirButton.dispatchEvent(new MouseEvent('click', { view: window, bubbles: true, cancelable: true }));
-            
-                await waitForCondition(() => {
-                    const horasActuales = getHorasActuales();
-                    const formatoCorrecto = /^\d{2}:\d{2}$/.test(horasActuales);
-                    return horasActuales !== horasAntesDeIncurrir && formatoCorrecto;
-                }, 10000, "actualización del contador");
-
-                console.log(`[ÉXITO] Tarea ${tareaCounter} incurrida.`);
-                tareaCounter++;
-            }
-            await sleep(300);
-            requestPageToast("¡Proceso completado!");
-        }
-
-        async function runAutomation() {
-            console.log("================ INICIO DEL SCRIPT ================");
-            const meses = { 'enero': 0, 'febrero': 1, 'marzo': 2, 'abril': 3, 'mayo': 4, 'junio': 5, 'julio': 6, 'agosto': 7, 'septiembre': 8, 'octubre': 9, 'noviembre': 10, 'diciembre': 11 };
-            
-            const getPageDate = () => {
-                 const dateH2 = Array.from(document.querySelectorAll('h2')).find(h2 => Object.keys(meses).some(mes => h2.textContent.toLowerCase().includes(mes)));
-                 if (!dateH2) return null;
-                 const dateElement = dateH2.querySelector('.highlight');
-                 if (!dateElement) return null;
-                 const match = dateElement.textContent.toLowerCase().match(/(\d{1,2}) de (\w+) de (\d{4})/);
-                 if (!match) return null;
-                 return new Date(parseInt(match[3], 10), meses[match[2]], parseInt(match[1], 10));
-            };
-
-            let pageDate = getPageDate();
-            if (!pageDate) throw new Error("Asegúrate de estar en la página principal.");
-
-            const today = new Date();
-            pageDate.setHours(0,0,0,0);
-            today.setHours(0,0,0,0);
-            
-            const horasCargadas = findElementByText('h2', 'Horas cargadas:').querySelector('.highlight').textContent.trim();
-
-            if (pageDate.getTime() === today.getTime()) {
-                await incurrirTareas(today);
-            } else if (pageDate.getTime() < today.getTime() && horasCargadas === '00:00') {
-                console.log(`[INFO] La fecha no es la actual, pero las horas son 00:00. Se procederá a incurrir en la fecha mostrada: ${pageDate.toLocaleDateString()}`);
-                await incurrirTareas(pageDate);
-            } else {
-                console.log("[INFO] La fecha no es la actual y ya tiene horas. Iniciando corrección automática de fecha...");
-                
-                const observer = new MutationObserver(async (mutations, obs) => {
-                    const calendarioDiv = document.querySelector('.calendario');
-                    if (calendarioDiv) {
-                        obs.disconnect(); 
-                        console.log("[OBSERVER] Vista de calendario detectada. Aplicando ajuste de fecha...");
-                        
-                        const formElement = document.querySelector('.formio-form');
-                        if (!formElement) { throw new Error("No se pudo encontrar el elemento '.formio-form'."); }
-                        const componentWrapper = formElement.closest('.formio-component[id]');
-                        if (!componentWrapper) { throw new Error("No se pudo encontrar el contenedor del componente con un ID."); }
-                        const formId = componentWrapper.id;
-
-                        const dia = String(today.getDate()).padStart(2, '0');
-                        const mes = String(today.getMonth() + 1).padStart(2, '0');
-                        const anio = today.getFullYear();
-                        const fechaStr = `${dia}/${mes}/${anio}`;
-
-                        document.body.dataset.formId = formId;
-                        document.body.dataset.fechaStr = fechaStr;
-
-                        const script = document.createElement('script');
-                        script.src = chrome.runtime.getURL('injector.js');
-                        
-                        script.onload = function() {
-                            this.remove();
-                        };
-                        script.onerror = function() {
-                            console.error("ERROR: No se pudo cargar el script 'injector.js'.");
-                            this.remove();
-                        };
-
-                        (document.head || document.documentElement).appendChild(script);
-
-                        console.log("[INFO] Esperando a que la página principal se actualice con la fecha correcta...");
-                        await waitForCondition(() => {
-                            const newPageDate = getPageDate();
-                            if (!newPageDate) return false;
-                            newPageDate.setHours(0,0,0,0);
-                            return newPageDate.getTime() === today.getTime();
-                        }, 15000, "actualización de la fecha en la página principal");
-                        
-                        console.log("[ÉXITO] Página principal actualizada.");
-                        await incurrirTareas(today);
-                    }
-                });
-                
-                observer.observe(document.body, { childList: true, subtree: true });
-
-                const changeDateLink = findElementByText('.sidebar.navbar-nav a', 'Cambiar fecha');
-                changeDateLink.click();
-            }
-        }
+        console.log("[Content Script] Módulos no cargados. Solicitando inyección al background...");
 
         try {
-            runAutomation();
+            const response = await chrome.runtime.sendMessage({ action: "injectModules" });
+            if (response && response.status === "ok") {
+                console.log("[Content Script] Módulos inyectados por background.");
+                await new Promise(resolve => setTimeout(resolve, 50)); // Breve espera
+            } else {
+                throw new Error(response?.message || "Error desconocido al inyectar módulos.");
+            }
         } catch (error) {
-            console.error("Extensión: Ha ocurrido un error fatal.", error);
-            showToast(`Error fatal en la extensión: ${error.message}.`);
+            console.error("[Content Script] Error al solicitar inyección de módulos:", error);
+            requestPageToast(`Error al cargar módulos: ${error.message}`, "error", 5000);
+            throw error;
         }
+    }
+
+
+    // --- Carga Asíncrona de Configuración ---
+    async function loadConfig() {
+        try {
+            const storage = await chrome.storage.local.get({ configV2: null });
+            const config = storage.configV2;
+            if (!config || !config.proyectos || !config.planDiario || config.sdaComun === undefined || config.horasEsperadasDiarias === undefined) {
+                 throw new Error("Configuración V2 inválida o no encontrada. Por favor, abre Opciones, configura (o importa tu CSV/JSON) y guarda.");
+            }
+            return config;
+        } catch (error) {
+            console.error("[Content Script] Error crítico al cargar la configuración:", error);
+            requestPageToast(`Error al cargar configuración: ${error.message}`, 'error', 6000);
+            return null;
+        }
+    }
+
+    // --- Lógica de Automatización (Funciones Orquestadoras) ---
+    // Estas funciones AHORA dependen de que los módulos estén cargados
+    // (es decir, que ensureModulesAreLoaded() se haya completado).
+
+    async function runIncurrirAutomation(config) {
+        console.log("================ INICIO INCURRIDO HOY ================");
+        const pageDate = getPageDate(); // de utils.js
+        if (!pageDate) {
+             if (document.querySelector('.calendario')) { requestPageToast("Ejecuta 'Incurrir Hoy' desde la pág. principal.", "info"); }
+             else { throw new Error("No se pudo obtener la fecha. ¿Estás en la pág. principal de incurridos?"); }
+             return;
+        }
+        const today = new Date(); pageDate.setHours(0,0,0,0); today.setHours(0,0,0,0);
+        const pageDateStr = pageDate.toISOString().split('T')[0];
+        const todayStr = today.toISOString().split('T')[0];
+        const diaSemanaHoy = today.getDay();
+
+        if (diaSemanaHoy === 0 || diaSemanaHoy === 6) {
+             requestPageToast("Hoy es fin de semana. No se puede incurrir.", "info"); return;
+        }
+        const horasCargadas = getHorasActuales(); // de utils.js
+
+        if (pageDateStr === todayStr) {
+            const tareasHoy = getTareasParaDia_v2_3(today, config);
+            await incurrirTareas(today, tareasHoy, config); // de incurrir.js
+        } else if (pageDate < today && horasCargadas === '00:00') {
+            const tareasPasadas = getTareasParaDia_v2_3(pageDate, config);
+            await incurrirTareas(pageDate, tareasPasadas, config);
+        } else {
+            const todayDDMMYYYY = `${String(today.getDate()).padStart(2, '0')}/${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`;
+            await navigateToDate(todayDDMMYYYY, getPageDate); // de navigation.js
+            await sleep(1500); // de utils.js
+            const tareasHoy = getTareasParaDia_v2_3(today, config);
+            await incurrirTareas(today, tareasHoy, config);
+        }
+         console.log("================ FIN INCURRIDO HOY ================");
+    }
+
+    async function runBorrarAutomation(config, startDate, endDate) {
+         console.log(`================ INICIO BORRADO (${startDate} a ${endDate}) ================`);
+         await deleteTasksInRange(startDate, endDate); // de borrar.js
+         console.log("================ FIN BORRADO ================");
+    }
+
+    async function runIncurrirRangeAutomation(config, startDateStr, endDateStr) {
+        console.log(`================ INICIO INCURRIR RANGO (${startDateStr} a ${endDateStr}) ================`);
+        requestPageToast(`Iniciando incurrido en rango ${startDateStr} a ${endDateStr}...`, 'info', 6000);
+        const startDate = new Date(startDateStr + 'T00:00:00');
+        const endDate = new Date(endDateStr + 'T00:00:00');
+        let currentDate = new Date(startDate);
+        try {
+            while (currentDate <= endDate) {
+                const dayDDMMYYYY = `${String(currentDate.getDate()).padStart(2, '0')}/${String(currentDate.getMonth() + 1).padStart(2, '0')}/${currentDate.getFullYear()}`;
+                const diaSemana = currentDate.getDay();
+                if (diaSemana !== 0 && diaSemana !== 6) {
+                    requestPageToast(`Incurriendo día: ${dayDDMMYYYY}`, 'info');
+                    const currentPageDate = getPageDate();
+                    const currentPageStr = currentPageDate ? currentPageDate.toISOString().split('T')[0] : null;
+                    if (!currentPageStr || currentPageStr !== currentDate.toISOString().split('T')[0]) {
+                        await navigateToDate(dayDDMMYYYY, getPageDate);
+                        await sleep(2500);
+                    } else {
+                        await sleep(500);
+                    }
+                    const tareasDelDia = getTareasParaDia_v2_3(currentDate, config);
+                    await incurrirTareas(currentDate, tareasDelDia, config);
+                }
+                currentDate.setDate(currentDate.getDate() + 1);
+                await sleep(500);
+            }
+            requestPageToast("¡Incurrido de rango completado!", "success");
+        } catch (error) {
+             console.error("[Incurrir Rango] Error durante el proceso:", error);
+             requestPageToast(`Error en incurrido de rango: ${error.message}`, 'error', 6000);
+        }
+    }
+
+
+    // --- LISTENER PARA MENSAJES DEL POPUP ---
+    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+        if (request.action === 'ping') {
+            sendResponse({ status: 'ok' });
+            return false; 
+        }
+
+        console.log("[Content Script] Mensaje de popup recibido:", request);
+
+        (async () => {
+            try {
+                await ensureModulesAreLoaded();
+                const config = await loadConfig();
+                if (!config) throw new Error("Configuración no válida o no cargada.");
+
+                switch (request.action) {
+                    case "incurrirHoy":
+                        await runIncurrirAutomation(config);
+                        break;
+                    case "deleteInRange":
+                        await runBorrarAutomation(config, request.startDate, request.endDate);
+                        break;
+                    case "incurrirInRange":
+                        await runIncurrirRangeAutomation(config, request.startDate, request.endDate);
+                        break;
+                    default:
+                        throw new Error("Acción desconocida");
+                }
+                sendResponse({ status: "ok", action: request.action });
+            } catch (error) {
+                console.error(`[Content Script] Error al procesar acción '${request.action}':`, error);
+                requestPageToast(`Error: ${error.message}`, 'error');
+                sendResponse({ status: "error", message: error.message });
+            }
+        })();
+        
+        return true; // Respuesta asíncrona
     });
-})();
+
+    // --- FUNCIÓN PARA INYECTAR BOTÓN (Estilo Clonado) ---
+    function injectAutoIncurrirButton() {
+        if (document.getElementById('autoIncurrirHoyBtn')) {
+            return; // Ya existe, no hacer nada
+        }
+        try {
+            const incurrirWrapper = document.querySelector('div.formio-component.incurrirBoton');
+            const modificarWrapper = document.querySelector('div.formio-component.modificarBoton');
+            const borrarWrapper = document.querySelector('div.formio-component.borrarBoton');
+            if (!incurrirWrapper || !modificarWrapper || !borrarWrapper) {
+                 return; // Aún no están todos los botones, el observador volverá a llamar
+            }
+            
+            // *** NUEVO: Capturar las clases del botón "Incurrir" original ***
+            const originalIncurrirButton = incurrirWrapper.querySelector('button.incurrirBoton');
+            if (!originalIncurrirButton) return; // No se encontró el botón original
+            
+            // Copiar todas las clases del botón original
+            // Ej: "btn btn-primary btn-md btn-block incurrirBoton"
+            const originalClasses = originalIncurrirButton.className;
+
+            const incurrirCol = incurrirWrapper.closest('div[class*="col-md-"]');
+            const modificarCol = modificarWrapper.closest('div[class*="col-md-"]');
+            const borrarCol = borrarWrapper.closest('div[class*="col-md-"]');
+            const spacer1 = incurrirCol?.previousElementSibling;
+            const spacer2 = borrarCol?.nextElementSibling;
+            if (!incurrirCol || !modificarCol || !borrarCol || !spacer1 || !spacer2) {
+                return; // Columnas no listas
+            }
+
+            console.log("[InjectBtn] Reajustando columnas (4x col-md-3) para inyectar botón...");
+            
+            // 4. --- NUEVA DISTRIBUCIÓN (4 x col-md-3) ---
+            
+            // Espaciadores: Ocultarlos
+            spacer1.style.display = 'none';
+            spacer2.style.display = 'none';
+            
+            // Función auxiliar para limpiar clases de columna y establecer col-md-3
+            const setCol3 = (el) => {
+                if (!el) return;
+                // Eliminar clases col-md-X y col-md-offset-X
+                const newClasses = (el.className || '').split(' ').filter(cls => 
+                    !cls.startsWith('col-md-')
+                );
+                newClasses.push('col-md-3'); // Añadir la clase deseada
+                el.className = newClasses.join(' ');
+            };
+
+            // Botones: Poner todos en col-md-3
+            setCol3(incurrirCol);
+            setCol3(modificarCol);
+            setCol3(borrarCol);
+
+            // console.log("[InjectBtn] Reajustando columnas para inyectar botón...");
+            // spacer1.classList.remove('col-md-1'); spacer1.classList.add('col-md-1');
+            // incurrirCol.classList.remove('col-md-3'); incurrirCol.classList.add('col-md-2');
+            // modificarCol.classList.remove('col-md-3'); modificarCol.classList.add('col-md-2');
+            // borrarCol.classList.remove('col-md-3'); borrarCol.classList.add('col-md-2');
+            // spacer2.classList.remove('col-md-1'); spacer2.classList.add('col-md-1');
+
+            const newCol = document.createElement('div');
+            //newCol.className = 'col-md-2 col-md-offset-0 col-md-push-0 col-md-pull-0';
+            newCol.className = 'col-md-3 col-md-offset-0 col-md-push-0 col-md-pull-0';
+
+            // *** ACTUALIZADO: Usar las clases copiadas ***
+            // Le quitamos 'incurrirBoton' para evitar conflictos y añadimos una nuestra
+            const newButtonClasses = originalClasses.replace('incurrirBoton', '') + ' autoIncurrirBoton';
+
+            newCol.innerHTML = `
+                <div ref="component" class="form-group has-feedback formio-component formio-component-button formio-component-autoIncurrir" id="autoIncurrirBtnWrapper">
+                  <button lang="en" class="${newButtonClasses}" type="button" ref="button" id="autoIncurrirHoyBtn">
+                    <span class="fa fa-rocket"></span>&nbsp;
+                    Auto Incurrir Hoy
+                  </button>
+                </div>`;
+            incurrirCol.parentElement.insertBefore(newCol, incurrirCol);
+
+            const newButton = newCol.querySelector('#autoIncurrirHoyBtn');
+            if (newButton) {
+                newButton.addEventListener('click', async () => {
+                    console.log('[AutoIncurrirBtn] "Auto Incurrir Hoy" pulsado.');
+                    newButton.disabled = true;
+                    newButton.innerHTML = '<span class="fa fa-spinner fa-spin"></span>&nbsp; Cargando...';
+                    try {
+                        await ensureModulesAreLoaded();
+                        newButton.innerHTML = '<span class="fa fa-spinner fa-spin"></span>&nbsp; Incurriendo...';
+                        const config = await loadConfig();
+                        if (!config) throw new Error("Configuración no válida o no cargada.");
+                        await runIncurrirAutomation(config);
+                    } catch (error) {
+                        console.error("[AutoIncurrirBtn] Error:", error);
+                        if(window.requestPageToast) requestPageToast(`Error: ${error.message}`, 'error');
+                    } finally {
+                        newButton.disabled = false;
+                        newButton.innerHTML = '<span class="fa fa-rocket"></span>&nbsp; Auto Incurrir Hoy';
+                    }
+                });
+                console.log("[InjectBtn] ¡Botón 'Auto Incurrir Hoy' inyectado y listo!");
+            }
+        } catch (error) {
+            console.error("[InjectBtn] Error al inyectar el botón:", error);
+        }
+    }
+
+    // --- INYECCIÓN DE BOTÓN (LÓGICA MEJORADA) ---
+
+    // 1. Definir el observador
+    const persistentObserver = new MutationObserver((mutationsList, obs) => {
+        // Comprobar si el botón ancla existe
+        const incurrirButtonWrapper = document.querySelector('div.formio-component.incurrirBoton');
+        // Comprobar si nuestro botón ya existe
+        const autoIncurrirButton = document.getElementById('autoIncurrirHoyBtn');
+
+        // CONDICIÓN: Si el ancla existe Y nuestro botón NO existe...
+        if (incurrirButtonWrapper && !autoIncurrirButton) {
+            // ...entonces inyectamos el botón.
+            // console.log("[Content Script] Observador detectó ancla sin botón. Inyectando...");
+            injectAutoIncurrirButton();
+        }
+        
+        // NO desconectar el observador. Queremos que siga vigilando
+        // por si la UI se re-renderiza y borra nuestro botón.
+    });
+
+    // 2. Empezar a observar DESPUÉS de que la carga inicial del DOM esté completa
+    // Esto evita ejecutar la lógica 1000 veces mientras la página se construye.
+    try {
+        if (document.readyState === 'loading') {
+            // La página aún está cargando. Esperar al evento DOMContentLoaded.
+            document.addEventListener('DOMContentLoaded', () => {
+                persistentObserver.observe(document.body, { childList: true, subtree: true });
+                console.log("[Content Script] MutationObserver persistente iniciado (post-DOMContentLoaded).");
+                // Intentar una inyección inmediata por si acaso
+                injectAutoIncurrirButton();
+            });
+        } else {
+            // El DOM ya está cargado, empezar a observar de inmediato.
+            persistentObserver.observe(document.body, { childList: true, subtree: true });
+            console.log("[Content Script] MutationObserver persistente iniciado (DOM ya cargado).");
+            // E intentar una inyección inmediata
+            injectAutoIncurrirButton();
+        }
+    } catch (e) {
+        console.error("[Content Script] No se pudo iniciar MutationObserver:", e);
+    }
+
+    console.log("[Content Script] Orquestador v2.5 cargado y observando.");
+
+})(); // Fin de la IIFE

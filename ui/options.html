@@ -2,112 +2,432 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Configuración de Tareas</title>
+    <title>Configuración de Tareas (v2.4 - Vista Semanal)</title>
     <style>
-        /* Center the options container */
+        /* Estilos generales */
         html, body { height: 100%; margin: 0; }
         body { display: flex; align-items: flex-start; justify-content: center; font-family: sans-serif; padding: 20px; background: #fafafa; }
-        .options-container { width: 100%; max-width: 820px; background: white; padding: 18px; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,0.06); }
-        h1, h2 { border-bottom: 2px solid #eee; padding-bottom: 5px; }
-    .task-list, .time-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
-    .task-row { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; border: 1px solid #ccc; padding: 10px; border-radius: 5px; }
-    .task-inputs { display:flex; gap:8px; align-items:center; }
-    .task-inputs .task-nombre { flex:1; }
-    .task-inputs .task-codigo { width:180px; }
-    .time-row { display: grid; grid-template-columns: minmax(150px, 1fr) auto; gap: 12px; align-items: center; border: 1px solid #ccc; padding: 10px; border-radius: 5px; }
-    .task-row input { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
-    .time-row .task-label { padding-left: 4px; font-weight: 600; }
-    .time-row input { width: 72px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; text-align:center; }
-    .time-row .time-inputs { justify-self: end; }
-    .remove-task-btn, .add-task-btn { padding: 8px 12px; background-color: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer; }
-    .add-task-btn { background-color: #4CAF50; margin-top: 10px; }
+        .options-container { width: 100%; max-width: 900px; /* Ancho para la semana */ background: white; padding: 20px; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,0.06); }
+        h1, h2 { border-bottom: 2px solid #eee; padding-bottom: 8px; margin-bottom: 15px;}
+        input[type="text"] { padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; box-sizing: border-box;}
+        select { padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; box-sizing: border-box; background-color: white; cursor: pointer;}
+        button { border: none; border-radius: 4px; cursor: pointer; color: white; padding: 8px 12px; font-size: 14px; box-sizing: border-box;} /* Added box-sizing */
+        .list-container { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; max-height: 150px; /* Altura reducida */ overflow-y: auto; border: 1px solid #eee; padding: 10px; border-radius: 5px; background: #f9f9f9;}
+        .rule-row { display: grid; gap: 10px; align-items: center; border: 1px solid #ccc; padding: 8px 10px; border-radius: 5px; background: white;}
+        #project-list .rule-row { grid-template-columns: 1fr auto; } /* Código, SDA Display */
+        #project-list input[type="text"] { background-color: #f0f0f0; border-color: #e0e0e0; cursor: not-allowed;} /* Estilo readonly */
+        #project-list .project-sda-display { font-size: 0.9em; color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        
+        
+        /* --- ESTILOS CONTROLES PRINCIPALES (Grid 2 filas explícitas) --- */
+        .main-controls {
+            display: grid;
+            grid-template-columns: 2fr 2fr 1fr; /* Proporción ~40% 40% 20% */
+            gap: 10px;
+            margin-top: 25px;
+            align-items: stretch;
+        }
 
-    /* Main controls layout: buttons equally distributed */
-    .main-controls { display:flex; gap:12px; margin-top: 12px; }
-    .main-controls button { flex: 1; padding: 12px 14px; font-size: 15px; border: none; border-radius: 6px; color: white; cursor: pointer; }
-    /* Give the save button more weight: 2:1:1 ratio */
-    .main-controls button#save { flex: 2; background-color: #008CBA; }
-    .main-controls button.secondary { background-color: #007bff; }
-    .main-controls button.secondary.alt { background-color: #6c757d; }
+        /* Controles CSV: Fila 1 completa */
+        .csv-import-controls {
+            grid-column: 1 / 4; /* Span all columns */
+            grid-row: 1;        /* Fila 1 */
+            /* Estilos internos Flexbox */
+            display: flex;
+            gap: 8px; /* Espacio entre input y botón */
+            border: 1px solid #ccc; padding: 8px; border-radius: 5px;
+            align-items: center;
+            box-sizing: border-box;
+        }
+        /* --- AJUSTE DE ANCHO INPUT/BOTÓN CSV --- */
+        .csv-import-controls input#employee-id {
+            flex-basis: 40%; /* Input ocupa 40% */
+            flex-grow: 0;   /* No crece más allá del 40% */
+            flex-shrink: 0; /* No se encoge */
+            min-width: 100px; /* Ancho mínimo razonable */
+        }
+        .csv-import-controls button#import-csv-btn {
+            flex-basis: 60%; /* Botón ocupa 60% */
+            flex-grow: 0;
+            flex-shrink: 0;
+            /* Estilos de botón (padding, etc.) se heredan o se ponen aquí */
+            padding: 10px 14px; font-size: 14px; 
+            background-color: #00ae54;
+            white-space: nowrap; /* Evitar que el texto se parta */
+            text-align: center; /* Centrar texto */
+        }
+
+        /* Botones Fila 2 */
+        #export-btn {
+            grid-column: 1 / 2; /* Columna 1 */
+            grid-row: 2;        /* ***** ASIGNAR A FILA 2 ***** */
+            background-color: #007bff; /* Azul */
+        }
+        #import-json-btn {
+            grid-column: 2 / 3; /* Columna 2 */
+            grid-row: 2;        /* ***** ASIGNAR A FILA 2 ***** */
+            background-color: #6c757d; /* Gris */
+        }
+        #clear-all-config-btn {
+            grid-column: 3 / 4; /* Columna 3 */
+            grid-row: 2;        /* ***** ASIGNAR A FILA 2 ***** */
+            background-color: #dc3545; /* Rojo */
+            font-size: 13px;
+        }
+
+        /* Estilos comunes botones Fila 2 */
+        #export-btn, #import-json-btn, #clear-all-config-btn {
+            padding: 12px 10px; font-size: 14px; text-align: center;
+            width: 100%; box-sizing: border-box;
+        }
+
+        /* Botón Guardar (oculto, iría en Fila 3 si fuera visible) */
+        #save { display: none; grid-column: 1 / -1; grid-row: 3; background-color: #008CBA; }
+
+        /* --- FIN ESTILOS CONTROLES --- */
+
+
+        #status { display: block; width: 100%; text-align: center; margin-top: 15px; font-weight: bold; min-height: 1.2em; /* Espacio para mensajes */}
+
+        /* --- ESTILOS VISTA SEMANAL CON COLORES --- */
+        .summary-section { margin-top: 30px; border-top: 2px solid #eee; padding-top: 15px; }
+        .summary-details p { margin: 5px 0; }
+        .summary-details strong { min-width: 100px; display: inline-block;}
+        .common-settings { margin: 10px 0 15px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+        .common-settings label { font-weight: bold; }
+        .common-settings select { flex: 1 1 220px; }
+        .common-settings small { color: #666; font-size: 12px; flex-basis: 100%; }
+        .week-navigation { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .week-navigation button { background-color: #6c757d; padding: 5px 10px; font-size: 16px; flex-shrink: 0; }
+        #current-week-display { font-weight: bold; font-size: 1.1em; text-align: center; flex-grow: 1; margin: 0 10px;}
+        .weekly-plan-display {
+             display: grid;
+             grid-template-columns: repeat(5, 1fr); /* 5 columnas (Lun-Vie) */
+             gap: 10px; border: 1px solid #eee; padding: 10px; background: #fdfdfd;
+             font-size: 0.85em; /* Tamaño letra pequeño */
+             line-height: 1.3; min-height: 150px; /* Altura mínima */
+        }
+        .day-column { border: 1px solid #ddd; border-radius: 4px; padding: 8px; background-color: #fff; display: flex; flex-direction: column; } /* Flex para centrar V/F */
+        .day-column h5 { margin: 0 0 8px 0; padding-bottom: 5px; border-bottom: 1px solid #eee; font-size: 0.95em; text-align: center;}
+        .day-column .horas { font-weight: bold; display: block; text-align: center; margin-bottom: 5px; font-size: 0.9em;}
+        .day-column ul { list-style: none; padding: 0; margin: 0; flex-grow: 1; /* Ocupar espacio vertical */}
+        /* Estilos base para cada tarea LI */
+        .day-column li {
+            margin-bottom: 5px; border-radius: 3px; padding: 4px 6px;
+            border: 1px solid #eee; line-height: 1.2;
+        }
+        /* Colores específicos por tipo de tarea (nombres simplificados) */
+        .day-column li.tarea-diseno { background-color: #ffffcc; border-color: #e6e600; } /* Amarillo */
+        .day-column li.tarea-construccion { background-color: #cfe2f3; border-color: #7c9ed9; } /* Azul */
+        .day-column li.tarea-pruebas { background-color: #d9d2e9; border-color: #6a5a9e; } /* Morado */
+        .day-column li.tarea-despliegue { background-color: #d9ead3; border-color: #4d7a3a; } /* Verde */
+        /* Estilo por defecto si el tipo no coincide */
+        .day-column li.tarea-default { background-color: #f0f0f0; border-color: #ccc; }
+
+        .day-column .tipo-tarea { display: none; } /* Ocultar span de tipo tarea */
+        .day-column .tipo-imputacion { font-weight: bold; color: #333; font-size: 0.9em; display: block; text-align: right;}
+        .day-column .no-plan { color: #999; text-align: center; font-style: italic; font-size: 0.9em; margin-top: 10px;}
+
+        /* Estilos días no laborables */
+        .day-column.non-workday { background-color: #f8f9fa; opacity: 0.8; } /* Gris claro general */
+
+        /* Estilos V y F */
+        .day-column.day-vacation { background-color: #d2fbd1; border-color: #a3e0a2; } /* Verde notorio */
+        .day-column.day-holiday { background-color: #fde2e2; border-color: #f7b1b1; } /* Rojo notorio */
+
+         /* Estilo para texto V/F */
+         .day-column .holiday-vacation-text {
+            font-size: 1.5em; font-weight: bold; text-align: center; color: #555;
+            display: flex; align-items: center; justify-content: center;
+            flex-grow: 1; /* Ocupar espacio vertical */
+         }
+
+         /* --- NUEVO: Estilo para el día actual --- */
+        .day-column.today {
+            border: 2px solid #007bff;
+            background-color: #f0f7ff;
+            box-shadow: 0 0 5px rgba(0,123,255,0.3);
+        }
+        
+        /* --- Estilos para iconos de edición --- */
+        .day-actions {
+            display: flex;
+            gap: 4px;
+            justify-content: center;
+            margin-top: 6px;
+            padding-top: 6px;
+            border-top: 1px solid #eee;
+        }
+        .day-action-btn {
+            background: none;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            padding: 4px 8px;
+            cursor: pointer;
+            font-size: 14px;
+            color: #555;
+            transition: all 0.2s;
+        }
+        .day-action-btn:hover {
+            background-color: #f0f0f0;
+            border-color: #999;
+            color: #000;
+        }
+        .day-action-btn.edit-btn:hover {
+            background-color: #e3f2fd;
+            border-color: #2196f3;
+            color: #1976d2;
+        }
+        .day-action-btn.add-btn:hover {
+            background-color: #e8f5e9;
+            border-color: #4caf50;
+            color: #2e7d32;
+        }
+        
+        /* --- Modal para editar/añadir tareas --- */
+        .task-modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            align-items: center;
+            justify-content: center;
+        }
+        .task-modal.active {
+            display: flex;
+        }
+        .task-modal-content {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        .task-modal h3 {
+            margin-top: 0;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+        }
+        .task-form-group {
+            margin-bottom: 15px;
+        }
+        .task-form-group label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+        .task-form-group select,
+        .task-form-group input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        .task-list {
+            margin: 15px 0;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .task-item {
+            display: grid;
+            grid-template-columns: 2fr 1.5fr 1fr 1fr auto;
+            gap: 8px;
+            align-items: center;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 8px;
+            background: #f9f9f9;
+        }
+        .task-item-label {
+            font-size: 13px;
+            color: #666;
+        }
+        .task-item input,
+        .task-item select {
+            padding: 4px 6px;
+            font-size: 13px;
+        }
+        .task-item button {
+            padding: 4px 8px;
+            font-size: 12px;
+            background-color: #dc3545;
+        }
+        .task-item button:hover {
+            background-color: #c82333;
+        }
+        .modal-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 20px;
+            padding-top: 15px;
+            border-top: 1px solid #eee;
+        }
+        .modal-actions button {
+            padding: 10px 20px;
+        }
+        .modal-actions .btn-save {
+            background-color: #28a745;
+        }
+        .modal-actions .btn-save:hover {
+            background-color: #218838;
+        }
+        .modal-actions .btn-cancel {
+            background-color: #6c757d;
+        }
+        .modal-actions .btn-cancel:hover {
+            background-color: #5a6268;
+        }
+        .modal-actions .btn-add {
+            background-color: #007bff;
+        }
+        .modal-actions .btn-add:hover {
+            background-color: #0056b3;
+        }
+        /* --- FIN Estilos Vista Semanal --- */
     </style>
 </head>
 <body>
     <div class="options-container">
-        <h1>Configuración de Tareas</h1>
+        <h1>Configuración de Tareas (v2.4)</h1>
 
-        <h2>1. Define tus Tareas</h2>
-        <div id="task-definitions" class="task-list">
-            </div>
-        <div id="empty-tasks-msg" style="color:#555; margin-top:8px; display:none;">No hay tareas definidas. Usa "Añadir Tarea" para empezar.</div>
-        <div style="margin-top:10px; display:flex; gap:8px; align-items:center;">
-            <button id="add-task-btn" class="add-task-btn">➕ Añadir Tarea</button>
-            <button id="add-example-btn" class="add-task-btn" style="background-color:#17a2b8;">✨ Añadir ejemplo</button>
-        </div>
+        <h2>Importar Planificación desde CSV</h2>
+        <p>Usa la opción **"Importar Plan (CSV)"** para cargar tus proyectos, el SDATool común, las horas esperadas diarias y el plan de tareas diario desde tu archivo CSV. La sección "Mis Proyectos" y la "Vista Semanal" se rellenarán automáticamente.</p>
+        <p>Puedes usar **"Exportar Config (.json)"** para hacer una copia de seguridad de la configuración procesada.</p>
 
-        <div id="time-section">
-            <h2 style="margin-top: 30px;">2. Asigna el Tiempo por Jornada</h2>
-            <div id="empty-times-msg" style="color:#555; margin-top:8px; display:none;">Las asignaciones de tiempo aparecerán aquí cuando definas tareas.</div>
-                <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
-                    <label for="toggle-reducida">Activar Jornada Reducida</label>
-                    <input type="checkbox" id="toggle-reducida">
-                    <small style="color:#555;">Si está activado, 'Jornada Normal' será L-J (9h) y 'Jornada Reducida' será Viernes y Verano (7h)</small>
-                </div>
-
-                <h3 id="label-normal">Jornada Normal</h3>
-                <div id="time-assignments-normal" class="time-list">
-                </div>
-
-                <h3 id="label-reducida">Jornada Reducida</h3>
-                <div id="time-assignments-reducida" class="time-list">
-                </div>
-            </div>
-
-        <hr style="margin-top: 30px;">
         <div class="main-controls">
-            <button id="save">Guardar Cambios</button>
-            
-            <button id="export-btn" class="secondary">Exportar Configuración</button>
-            
-            <button id="import-btn" class="secondary alt">Importar Configuración</button>
-            <input type="file" id="import-file" accept=".json" style="display: none;">
+             <div class="csv-import-controls">
+                 <input type="text" id="employee-id" placeholder="Tu ID (ej. T012345)" style="flex-grow: 1;">
+                 <button id="import-csv-btn" style="white-space: nowrap;">Importar Plan (CSV)</button>
+                 <input type="file" id="import-csv-file" accept=".csv,.CSV" style="display: none;">
+                 <!-- Hidden file input for JSON import restored so the Import JSON button works -->
+                 <input type="file" id="import-json-file" accept=".json,application/json" style="display: none;">
+             </div>
+             <button id="export-btn">Exportar Config (.json)</button>
+             <button id="import-json-btn">Importar Config (.json)</button>
+             <button id="clear-all-config-btn">Borrar Config</button>
+             <button id="save">Guardar Cambios</button>
         </div>
+        <span id="status"></span>
 
-        <p style="text-align: center; color: #777; font-size: 12px; margin-top: 20px;">
+        <div class="summary-section">
+            <h2>Resumen y Vista Semanal del Plan (Lunes-Viernes)</h2>
+            <div class="summary-details">
+                <p><strong>SDA Común:</strong> <span id="summary-sda">No importado</span></p>
+                <p><strong>Tecnología común:</strong> <span id="summary-tecnologia">No definida</span></p>
+                <p><strong>Proyectos:</strong> <span id="summary-proyectos-count">0</span></p>
+                <p><strong>Días Planificados (Total):</strong> <span id="summary-dias-count">0</span></p>
+            </div>
+            <div class="common-settings">
+                <label for="common-technology">Selector tecnología:</label>
+                <select id="common-technology">
+                    <option value="">-- Seleccionar Tecnología --</option>
+                    <option value="APX">APX</option>
+                    <option value="ASO">ASO</option>
+                    <option value="Cells">Cells</option>
+                    <option value="Data Services">Data Services</option>
+                    <option value="Distribuido (Nacar, Spring, etc.)">Distribuido (Nacar, Spring, etc.)</option>
+                    <option value="Google Cloud Platform">Google Cloud Platform</option>
+                    <option value="Mainframe">Mainframe</option>
+                    <option value="SaaS">SaaS</option>
+                    <option value="Security">Security</option>
+                    <option value="Otras Tecnologías">Otras Tecnologías</option>
+                    <option value="Salesforce">Salesforce</option>
+                    <option value="Openweb">Openweb</option>
+                    <option value="LRA">LRA</option>
+                    <option value="LRBA">LRBA</option>
+                </select>
+                <small>Este valor se utilizará como tecnología por defecto al crear tareas de Construcción.</small>
+            </div>
+            <div class="common-settings" style="flex-direction: column; gap:6px;">
+                <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                        <input type="checkbox" id="override-enabled" style="cursor:pointer;">
+                        <span style="font-weight:600;">Activar Override de Horas</span>
+                    </label>
+                </div>
+                <table id="override-table" style="width:100%; border-collapse: collapse; opacity:0.5; pointer-events:none;">
+                    <thead>
+                        <tr>
+                            <th style="text-align:left; padding:4px; border-bottom:1px solid #ddd; width:120px;">&nbsp;</th>
+                            <th style="text-align:center; padding:4px; border-bottom:1px solid #ddd;">Normal</th>
+                            <th style="text-align:center; padding:4px; border-bottom:1px solid #ddd;">Reducido</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <th style="text-align:left; padding:6px 4px; font-weight:600;">Override</th>
+                            <td style="text-align:center; padding:6px 4px;">
+                                <input type="number" id="override-hours-rest-of-year" step="0.1" placeholder="ej. 9.0" style="width:90%;" disabled>
+                            </td>
+                            <td style="text-align:center; padding:6px 4px;">
+                                <input type="number" id="override-hours-summer-friday" step="0.1" placeholder="ej. 7.0" style="width:90%;" disabled>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+                <small style="margin-top:4px;">Normal = resto del año · Reducido = Viernes y Verano (1 Jul - 15 Sep).</small>
+            </div>
+            <div class="week-navigation">
+                <button id="prev-week" disabled>ᐊ Semana Anterior</button>
+                <span id="current-week-display">Semana (Importa CSV)</span>
+                <button id="next-week" disabled>Semana Siguiente ᐅ</button>
+            </div>
+            <div class="weekly-plan-display" id="weekly-plan-container">
+                <div class="day-column non-workday"><h5>Lun</h5><span class="no-plan">Importa</span></div>
+                <div class="day-column non-workday"><h5>Mar</h5><span class="no-plan">CSV</span></div>
+                <div class="day-column non-workday"><h5>Mié</h5><span class="no-plan">para ver</span></div>
+                <div class="day-column non-workday"><h5>Jue</h5><span class="no-plan">el plan</span></div>
+                <div class="day-column non-workday"><h5>Vie</h5><span class="no-plan">semanal.</span></div>
+            </div>
+        </div>
+        <hr style="margin-top: 25px;">
+
+        <h2>Mis Proyectos (Importados)</h2>
+        <p>Lista de códigos de proyecto encontrados en el último CSV importado para tu ID.</p>
+        <div id="project-list" class="list-container">
+             <p style="text-align: center; color: #888;">Los proyectos aparecerán aquí después de importar.</p>
+        </div>
+        <p style="text-align: center; color: #777; font-size: 12px; margin-top: 25px;">
             Creado por <strong>José Luis Guidú Navas</strong> 🚀
         </p>
     </div>
 
-    <template id="task-definition-template">
-        <div class="task-row">
-            <div class="task-inputs">
-                <input type="text" class="task-nombre" placeholder="Nombre (ej: Construcción)">
-                <input type="text" class="task-codigo" placeholder="Código Proyecto (ej: WSONE...)">
+    <template id="project-template">
+        <div class="rule-row" style="grid-template-columns: 1fr auto;">
+            <input type="text" class="project-codigo" readonly title="Código del Proyecto (Feature)">
+            <span class="project-sda-display" style="font-size: 0.9em; color: #555;" title="SDATool Común Importado"></span>
             </div>
-            <button class="remove-task-btn">✖</button>
-        </div>
     </template>
 
-    <template id="time-assignment-template">
-        <div class="time-row">
-            <span class="task-label"></span>
-            <div class="time-inputs" role="group" aria-label="Horas y minutos">
-                <input type="number" class="task-horas" placeholder="HH" min="0" max="23" aria-label="Horas" />
-                <span class="time-sep">:</span>
-                <input type="number" class="task-minutos" placeholder="MM" min="0" max="59" aria-label="Minutos" />
+    <!-- Modal para editar/añadir tareas -->
+    <div id="task-modal" class="task-modal">
+        <div class="task-modal-content">
+            <h3 id="modal-title">Editar Tareas</h3>
+            <p id="modal-date" style="color: #666; margin-bottom: 15px;"></p>
+            
+            <div class="task-list" id="task-list">
+                <!-- Tareas dinámicas se insertan aquí -->
+            </div>
+            
+            <div class="modal-actions">
+                <button class="btn-add" id="add-task-btn">➕ Añadir Tarea</button>
+                <button class="btn-save" id="save-tasks-btn">💾 Guardar</button>
+                <button class="btn-cancel" id="cancel-modal-btn">✖ Cancelar</button>
             </div>
         </div>
-    </template>
+    </div>
 
-    <style>
-        .time-inputs { display:flex; align-items:center; gap:6px; }
-        .time-inputs input { width:64px; padding:8px; border-radius:4px; border:1px solid #ddd; text-align:center; }
-        .time-sep { font-weight:bold; font-size:16px; margin:0 4px; }
-        @media (max-width: 480px) {
-            .time-inputs input { width:48px; padding:6px; }
-        }
-    </style>
-
-    <script src="../scripts/shared/toast.js"></script>
-    <script src="../scripts/options.js"></script>
+    <script src="../scripts/shared/toast.js"></script> <script src="../lib/papaparse.min.js"></script> <script src="../scripts/options.js"></script>
 </body>
 </html>
