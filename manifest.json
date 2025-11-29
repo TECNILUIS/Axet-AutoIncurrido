@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Axet-AutoIncurrido",
-  "version": "2.4",
+  "version": "1.0.0",
   "description": "Automatiza la imputación de horas en AxetFlows.",
   "author": "José Luis Guidú Navas",
   "homepage_url": "https://github.com/TECNILUIS/Axet-AutoIncurrido",
