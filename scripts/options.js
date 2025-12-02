@@ -28,6 +28,8 @@ document.addEventListener('DOMContentLoaded', () => {
         sdaComun: "",
         tecnologiaComun: "",
         horasEsperadasDiarias: {}, // Objeto { 'YYYY-MM-DD': 'horas/codigo', ... }
+        horasEsperadasOriginales: {}, // Copia de referencia proveniente del CSV
+        manualHoursOverrides: {}, // Mapa de días con horas modificadas manualmente
         planDiario: {}, // Objeto { 'YYYY-MM-DD': [{ proyectoIndex, tipoTarea, horas, minutos }, ...], ... } // Horas PRE-CALCULADAS
         planDiarioRaw: {}, // Plan en bruto (valorCSV) utilizado para recalcular
         manualOverrideDays: {}, // Días editados manualmente que no se recalculan
@@ -42,6 +44,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!config.planDiario || typeof config.planDiario !== 'object') config.planDiario = {};
         if (!config.planDiarioRaw || typeof config.planDiarioRaw !== 'object') config.planDiarioRaw = {};
         if (!config.manualOverrideDays || typeof config.manualOverrideDays !== 'object') config.manualOverrideDays = {};
+        if (!config.horasEsperadasDiarias || typeof config.horasEsperadasDiarias !== 'object') config.horasEsperadasDiarias = {};
+        if (!config.horasEsperadasOriginales || typeof config.horasEsperadasOriginales !== 'object') {
+            config.horasEsperadasOriginales = { ...(config.horasEsperadasDiarias || {}) };
+        }
+        if (!config.manualHoursOverrides || typeof config.manualHoursOverrides !== 'object') {
+            config.manualHoursOverrides = {};
+        }
         if (config.overrideHoursReducido === undefined) config.overrideHoursReducido = null;
         if (config.overrideHoursNormal === undefined) config.overrideHoursNormal = null;
         if (config.overrideEnabled === undefined) config.overrideEnabled = false;
@@ -70,6 +79,46 @@ document.addEventListener('DOMContentLoaded', () => {
         const month = String(date.getMonth() + 1).padStart(2, '0');
         const day = String(date.getDate()).padStart(2, '0');
         return `${year}-${month}-${day}`;
+    }
+
+    function canonicalizeHoursValue(value) {
+        if (value === null || value === undefined) return '';
+        const raw = value.toString().trim();
+        if (!raw) return '';
+        const upper = raw.toUpperCase();
+        if (upper === 'V' || upper === 'F') {
+            return upper;
+        }
+        const normalized = raw.replace(',', '.');
+        const parsed = parseFloat(normalized);
+        if (isNaN(parsed)) {
+            return raw;
+        }
+        const rounded = Math.round(parsed * 100) / 100;
+        return Number.isFinite(rounded) ? rounded.toString() : raw;
+    }
+
+    function normalizeHoursString(value) {
+        const canonical = canonicalizeHoursValue(value);
+        if (!canonical || canonical === 'V' || canonical === 'F') {
+            return '';
+        }
+        return canonical;
+    }
+
+    function determineDayTypeFromValue(value) {
+        const canonical = canonicalizeHoursValue(value);
+        if (canonical === 'V') return 'vacaciones';
+        if (canonical === 'F') return 'festivo';
+        return 'laborable';
+    }
+
+    function describeDayValue(value) {
+        const canonical = canonicalizeHoursValue(value);
+        if (!canonical) return 'Sin valor';
+        if (canonical === 'V') return 'Vacaciones (V)';
+        if (canonical === 'F') return 'Festivo (F)';
+        return `${canonical}h`;
     }
 
     // --- FUNCIÓN DE CÁLCULO (LOCAL A OPTIONS.JS) ---
@@ -300,7 +349,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 dayColumn.classList.add('today');
             }
             
-            const horasEsperadas = (currentConfigData.horasEsperadasDiarias[dayStrYYYYMMDD] || '').toUpperCase();
+            const horasEsperadasRaw = currentConfigData.horasEsperadasDiarias[dayStrYYYYMMDD];
+            const horasEsperadas = (horasEsperadasRaw || '').toUpperCase();
             // --- USA planDiario (que ahora tiene horas calculadas) ---
             const planCalculadoDelDia = currentConfigData.planDiario[dayStrYYYYMMDD] || [];
             // --- FIN CAMBIO ---
@@ -308,6 +358,7 @@ document.addEventListener('DOMContentLoaded', () => {
             let horasDisplay = horasEsperadas || '-';
             let isWorkDay = !isNaN(parseInt(horasEsperadas, 10)) && parseInt(horasEsperadas, 10) > 0;
             let specialDayText = null;
+            const manualHoursOverride = currentConfigData.manualHoursOverrides && currentConfigData.manualHoursOverrides[dayStrYYYYMMDD];
 
                         // Añadir clases CSS y determinar texto especial
             if (!isWorkDay) {
@@ -324,6 +375,9 @@ document.addEventListener('DOMContentLoaded', () => {
             // Si es día especial (V o F), mostrar texto grande y centrado
             if (specialDayText) {
                 dayColumn.innerHTML += `<div class="holiday-vacation-text">${specialDayText}</div>`;
+                if (manualHoursOverride) {
+                    dayColumn.innerHTML += `<span class="manual-hours-pill" title="Horas ajustadas manualmente">Manual</span>`;
+                }
             } else { // Mostrar horas y tareas
                 // Calculate if override is active for this day
                 let tooltipText = '';
@@ -351,6 +405,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 const hoursSpan = tooltipText ? `<span class="horas" title="${tooltipText}">(${horasDisplay}${isWorkDay?'h':''})</span>` : `<span class="horas">(${horasDisplay}${isWorkDay?'h':''})</span>`;
                 dayColumn.innerHTML += hoursSpan;
+                if (manualHoursOverride) {
+                    dayColumn.innerHTML += `<span class="manual-hours-pill" title="Horas ajustadas manualmente">Manual</span>`;
+                }
                 // Mostrar tareas si es laborable Y hay plan calculado
                 if (isWorkDay && planCalculadoDelDia.length > 0) {
                     const taskList = document.createElement('ul');
@@ -394,16 +451,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } // Fin else (no es V o F)
             
-            // Añadir botones de edición/añadir para días laborables
-            if (isWorkDay || horasEsperadas === '') {
-                const actionsDiv = document.createElement('div');
-                actionsDiv.className = 'day-actions';
-                actionsDiv.innerHTML = `
-                    <button class="day-action-btn edit-btn" data-date="${dayStrYYYYMMDD}" title="Editar tareas">✏️</button>
+            const actionsDiv = document.createElement('div');
+            actionsDiv.className = 'day-actions';
+            const dayTypeForActions = determineDayTypeFromValue(horasEsperadasRaw);
+            const canAddTasks = dayTypeForActions === 'laborable' || horasEsperadas === '' || !!manualHoursOverride;
+            let actionsHtml = `
+                <button class="day-action-btn edit-btn" data-date="${dayStrYYYYMMDD}" title="Editar día">✏️</button>
+            `;
+            if (canAddTasks) {
+                actionsHtml += `
                     <button class="day-action-btn add-btn" data-date="${dayStrYYYYMMDD}" title="Añadir tarea">➕</button>
                 `;
-                dayColumn.appendChild(actionsDiv);
             }
+            actionsDiv.innerHTML = actionsHtml;
+            dayColumn.appendChild(actionsDiv);
             
             weeklyPlanContainerEl.appendChild(dayColumn);
         } // Fin for
@@ -489,6 +550,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         const normalizedConfig = ensureConfigShape({
             ...configToSave,
+            horasEsperadasDiarias: { ...(configToSave.horasEsperadasDiarias || {}) },
+            horasEsperadasOriginales: { ...(configToSave.horasEsperadasOriginales || configToSave.horasEsperadasDiarias || {}) },
+            manualHoursOverrides: { ...(configToSave.manualHoursOverrides || {}) },
             planDiario: { ...(configToSave.planDiario || {}) },
             planDiarioRaw: { ...(configToSave.planDiarioRaw || {}) },
             manualOverrideDays: { ...(configToSave.manualOverrideDays || {}) }
@@ -559,6 +623,9 @@ document.addEventListener('DOMContentLoaded', () => {
                      delete importedConfig.overrideHoursSummerFriday;
                      delete importedConfig.overrideHoursRestOfYear;
                      const normalizedImported = ensureConfigShape(importedConfig);
+                     if (!normalizedImported.horasEsperadasOriginales || !Object.keys(normalizedImported.horasEsperadasOriginales).length) {
+                         normalizedImported.horasEsperadasOriginales = { ...(normalizedImported.horasEsperadasDiarias || {}) };
+                     }
                      if (normalizedImported.planDiarioRaw && Object.keys(normalizedImported.planDiarioRaw).length) {
                          normalizedImported.planDiario = recalculatePlanFromRaw(normalizedImported);
                      }
@@ -599,7 +666,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         proyectos: extractedDataRaw.proyectos,
                         sdaComun: extractedDataRaw.sdaComun,
                         tecnologiaComun: currentConfigData.tecnologiaComun || "",
-                        horasEsperadasDiarias: extractedDataRaw.horasEsperadasDiarias,
+                        horasEsperadasDiarias: { ...extractedDataRaw.horasEsperadasDiarias },
+                        horasEsperadasOriginales: { ...extractedDataRaw.horasEsperadasDiarias },
+                        manualHoursOverrides: {},
                         planDiarioRaw: extractedDataRaw.planDiario,
                         planDiario: {},
                         manualOverrideDays: {},
@@ -894,9 +963,23 @@ document.addEventListener('DOMContentLoaded', () => {
     const addTaskBtn = document.getElementById('add-task-btn');
     const saveTasksBtn = document.getElementById('save-tasks-btn');
     const cancelModalBtn = document.getElementById('cancel-modal-btn');
+    const dayTypeSelect = document.getElementById('day-type-select');
+    const dayHoursInput = document.getElementById('day-hours-input');
+    const dayHoursHelp = document.getElementById('day-hours-help');
+    const dayHoursWrapper = document.getElementById('day-hours-wrapper');
+    const restoreDayHoursBtn = document.getElementById('restore-day-hours-btn');
     
     let currentEditingDate = null;
     let currentTasks = [];
+    let currentDayType = 'laborable';
+
+    if (restoreDayHoursBtn) {
+        restoreDayHoursBtn.disabled = true;
+        restoreDayHoursBtn.classList.add('disabled');
+    }
+    if (dayHoursHelp) {
+        dayHoursHelp.textContent = '';
+    }
 
     // Event delegation para botones de editar/añadir en los días
     document.addEventListener('click', (e) => {
@@ -909,42 +992,204 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    if (dayTypeSelect) {
+        dayTypeSelect.addEventListener('change', (event) => {
+            const newType = event.target.value;
+            setDayTypeState(newType);
+            if (newType === 'laborable' && dayHoursInput && currentEditingDate && !dayHoursInput.value) {
+                dayHoursInput.value = getSuggestedHoursForDate(currentEditingDate);
+            }
+        });
+    }
+
+    if (restoreDayHoursBtn) {
+        restoreDayHoursBtn.addEventListener('click', handleRestoreDayHoursClick);
+    }
+
     function openTaskModal(dateStr, mode = 'edit') {
         currentEditingDate = dateStr;
         const date = new Date(dateStr + 'T12:00:00');
         const dateFormatted = date.toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-        
-        modalTitle.textContent = mode === 'add' ? 'Añadir Tarea' : 'Editar Tareas';
+
+        modalTitle.textContent = mode === 'add' ? 'Planificar día' : 'Editar día';
         modalDate.textContent = dateFormatted;
-        
-        // Cargar tareas existentes del día (desde planDiario bruto si existe, o crear vacío)
+
         const existingPlan = currentConfigData.planDiario[dateStr] || [];
-        
-        // Convertir plan calculado a formato editable (necesitamos el bruto)
-        // Para esto, necesitamos reconstruir desde lo que tenemos
         currentTasks = existingPlan.map(task => ({
             proyectoIndex: task.proyectoIndex,
             tipoTarea: task.tipoTarea || '',
             horas: task.horas || '0',
             minutos: task.minutos || '0'
         }));
-        
-        if (mode === 'add' || currentTasks.length === 0) {
-            // Añadir una tarea vacía para empezar
-            currentTasks.push({
-                proyectoIndex: 0,
-                tipoTarea: 'Construcción',
-                horas: '0',
-                minutos: '0'
-            });
+
+        const expectedValue = currentConfigData.horasEsperadasDiarias?.[dateStr] ?? currentConfigData.horasEsperadasOriginales?.[dateStr] ?? '';
+        let derivedDayType = determineDayTypeFromValue(expectedValue);
+        let hoursValue = derivedDayType === 'laborable' ? normalizeHoursString(expectedValue) : '';
+
+        if (mode === 'add' && derivedDayType !== 'laborable') {
+            derivedDayType = 'laborable';
         }
-        
+        if (!hoursValue && derivedDayType === 'laborable') {
+            hoursValue = getSuggestedHoursForDate(dateStr);
+        }
+
+        if (dayHoursInput) {
+            dayHoursInput.value = hoursValue || '';
+        }
+
+        currentDayType = derivedDayType;
+        setDayTypeState(derivedDayType, { skipRender: true });
+        if (dayTypeSelect) {
+            dayTypeSelect.value = derivedDayType;
+        }
+
+        updateDayHoursHelpText(dateStr);
+        updateRestoreButtonState(dateStr);
+
+        const shouldSeedTask = (mode === 'add' || currentTasks.length === 0) && derivedDayType === 'laborable';
+        if (shouldSeedTask) {
+            currentTasks.push(defaultTask());
+        }
+
         renderTaskList();
         taskModal.classList.add('active');
     }
 
+    function defaultTask() {
+        return {
+            proyectoIndex: 0,
+            tipoTarea: 'Construcción',
+            horas: '0',
+            minutos: '0'
+        };
+    }
+
+    function setDayTypeState(dayType, options = {}) {
+        currentDayType = dayType;
+        if (dayTypeSelect && dayTypeSelect.value !== dayType) {
+            dayTypeSelect.value = dayType;
+        }
+        if (dayHoursWrapper) {
+            dayHoursWrapper.style.display = dayType === 'laborable' ? 'block' : 'none';
+        }
+        if (addTaskBtn) {
+            const disable = dayType !== 'laborable';
+            addTaskBtn.disabled = disable;
+            addTaskBtn.classList.toggle('disabled', disable);
+        }
+        if (!options.skipRender) {
+            renderTaskList();
+        }
+    }
+
+    function isCurrentDayLaborable() {
+        return currentDayType === 'laborable';
+    }
+
+    function updateDayHoursHelpText(dateStr) {
+        if (!dayHoursHelp) return;
+        if (!dateStr) {
+            dayHoursHelp.textContent = '';
+            return;
+        }
+        const originalValue = currentConfigData.horasEsperadasOriginales?.[dateStr];
+        if (originalValue === undefined) {
+            dayHoursHelp.textContent = 'Este día no existe en el CSV importado. Usa un valor manual.';
+            return;
+        }
+        dayHoursHelp.textContent = `CSV: ${describeDayValue(originalValue)}`;
+    }
+
+    function updateRestoreButtonState(dateStr) {
+        if (!restoreDayHoursBtn) return;
+        if (!dateStr) {
+            restoreDayHoursBtn.disabled = true;
+            restoreDayHoursBtn.classList.add('disabled');
+            return;
+        }
+        const hasOriginal = currentConfigData.horasEsperadasOriginales?.[dateStr] !== undefined;
+        restoreDayHoursBtn.disabled = !hasOriginal;
+        restoreDayHoursBtn.classList.toggle('disabled', !hasOriginal);
+    }
+
+    function handleRestoreDayHoursClick() {
+        if (!currentEditingDate) {
+            if (window.showToast) window.showToast('Abre un día para restaurar sus horas.', 'info');
+            return;
+        }
+        const originalValue = currentConfigData.horasEsperadasOriginales?.[currentEditingDate];
+        if (originalValue === undefined) {
+            if (window.showToast) window.showToast('No hay valor original para este día.', 'info');
+            return;
+        }
+        const restoredType = determineDayTypeFromValue(originalValue);
+        const restoredHours = restoredType === 'laborable' ? normalizeHoursString(originalValue) : '';
+        if (dayHoursInput) {
+            dayHoursInput.value = restoredHours;
+        }
+        setDayTypeState(restoredType);
+        updateDayHoursHelpText(currentEditingDate);
+    }
+
+    function getOverrideHoursForDate(dateObj) {
+        if (!currentConfigData.overrideEnabled || !dateObj || isNaN(dateObj.getTime())) return null;
+        const dayOfWeek = dateObj.getDay();
+        const month = dateObj.getMonth();
+        const day = dateObj.getDate();
+        const isFriday = dayOfWeek === 5;
+        const isSummer = month === 6 || month === 7 || (month === 8 && day <= 15);
+        if ((isFriday || isSummer) && currentConfigData.overrideHoursReducido !== null && currentConfigData.overrideHoursReducido !== undefined) {
+            return currentConfigData.overrideHoursReducido.toString();
+        }
+        if (!isFriday && !isSummer && currentConfigData.overrideHoursNormal !== null && currentConfigData.overrideHoursNormal !== undefined) {
+            return currentConfigData.overrideHoursNormal.toString();
+        }
+        return null;
+    }
+
+    function getSuggestedHoursForDate(dateStr) {
+        const directValue = normalizeHoursString(currentConfigData.horasEsperadasDiarias?.[dateStr]);
+        if (directValue) return directValue;
+        const originalValue = normalizeHoursString(currentConfigData.horasEsperadasOriginales?.[dateStr]);
+        if (originalValue) return originalValue;
+        const fallback = getOverrideHoursForDate(new Date(dateStr + 'T12:00:00'));
+        if (fallback) return normalizeHoursString(fallback);
+        return '8';
+    }
+
+    function getDayHoursValueForSave(dayType) {
+        if (dayType === 'vacaciones') return 'V';
+        if (dayType === 'festivo') return 'F';
+        const rawValue = (dayHoursInput?.value || '').trim();
+        if (!rawValue) {
+            if (window.showToast) window.showToast('Introduce las horas esperadas para el día.', 'error');
+            return null;
+        }
+        const normalized = normalizeHoursString(rawValue);
+        if (!normalized) {
+            if (window.showToast) window.showToast('Horas inválidas. Usa un número mayor que 0.', 'error');
+            return null;
+        }
+        const parsed = parseFloat(normalized);
+        if (isNaN(parsed) || parsed <= 0) {
+            if (window.showToast) window.showToast('Horas inválidas. Usa un número mayor que 0.', 'error');
+            return null;
+        }
+        return normalized;
+    }
+
     function renderTaskList() {
         taskListEl.innerHTML = '';
+
+        if (!isCurrentDayLaborable()) {
+            const warning = document.createElement('p');
+            warning.className = 'task-day-warning';
+            warning.textContent = currentDayType === 'vacaciones'
+                ? 'Este día está marcado como Vacaciones. Cambia el tipo a "Laborable" para añadir tareas.'
+                : 'Este día está marcado como Festivo. Cambia el tipo a "Laborable" para añadir tareas.';
+            taskListEl.appendChild(warning);
+            return;
+        }
         
         currentTasks.forEach((task, index) => {
             const taskItem = document.createElement('div');
@@ -1012,48 +1257,73 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     addTaskBtn.addEventListener('click', () => {
-        currentTasks.push({
-            proyectoIndex: 0,
-            tipoTarea: 'Construcción',
-            horas: '0',
-            minutos: '0'
-        });
+        if (!isCurrentDayLaborable()) {
+            if (window.showToast) window.showToast('Cambia el tipo de día a "Laborable" para añadir tareas.', 'info');
+            return;
+        }
+        currentTasks.push(defaultTask());
         renderTaskList();
     });
 
     saveTasksBtn.addEventListener('click', () => {
-        // Guardar las tareas editadas en planDiario
+        if (!currentEditingDate) {
+            if (window.showToast) window.showToast('Selecciona un día antes de guardar.', 'error');
+            return;
+        }
+
+        const dayValue = getDayHoursValueForSave(currentDayType);
+        if (dayValue === null) {
+            return;
+        }
+
         const updatedConfig = ensureConfigShape({
             ...currentConfigData,
+            horasEsperadasDiarias: { ...(currentConfigData.horasEsperadasDiarias || {}) },
+            horasEsperadasOriginales: { ...(currentConfigData.horasEsperadasOriginales || {}) },
+            manualHoursOverrides: { ...(currentConfigData.manualHoursOverrides || {}) },
             planDiario: { ...(currentConfigData.planDiario || {}) },
             manualOverrideDays: { ...(currentConfigData.manualOverrideDays || {}) }
         });
-        
-        // Filtrar tareas con tiempo > 0
-        const validTasks = currentTasks.filter(task => 
-            parseInt(task.horas) > 0 || parseInt(task.minutos) > 0
-        );
-        
-        if (validTasks.length > 0) {
-            updatedConfig.planDiario[currentEditingDate] = validTasks.map(task => ({
+
+        const canonicalValue = canonicalizeHoursValue(dayValue);
+        if (!updatedConfig.horasEsperadasOriginales[currentEditingDate]) {
+            updatedConfig.horasEsperadasOriginales[currentEditingDate] = canonicalValue;
+        }
+        updatedConfig.horasEsperadasDiarias[currentEditingDate] = canonicalValue;
+
+        const canonicalOriginal = canonicalizeHoursValue(updatedConfig.horasEsperadasOriginales[currentEditingDate]);
+        if (canonicalOriginal === canonicalValue) {
+            delete updatedConfig.manualHoursOverrides[currentEditingDate];
+        } else {
+            updatedConfig.manualHoursOverrides[currentEditingDate] = canonicalValue;
+        }
+
+        if (currentDayType === 'laborable') {
+            const validTasks = currentTasks.filter(task =>
+                parseInt(task.horas, 10) > 0 || parseInt(task.minutos, 10) > 0
+            ).map(task => ({
                 proyectoIndex: task.proyectoIndex,
                 tipoTarea: task.tipoTarea,
                 horas: task.horas,
                 minutos: task.minutos
             }));
-            updatedConfig.manualOverrideDays[currentEditingDate] = true;
-        } else {
-            // Si no hay tareas válidas, eliminar el día del plan
-            delete updatedConfig.planDiario[currentEditingDate];
-            if (updatedConfig.manualOverrideDays[currentEditingDate]) {
+
+            if (validTasks.length > 0) {
+                updatedConfig.planDiario[currentEditingDate] = validTasks;
+                updatedConfig.manualOverrideDays[currentEditingDate] = true;
+            } else {
+                delete updatedConfig.planDiario[currentEditingDate];
                 delete updatedConfig.manualOverrideDays[currentEditingDate];
             }
+        } else {
+            delete updatedConfig.planDiario[currentEditingDate];
+            delete updatedConfig.manualOverrideDays[currentEditingDate];
         }
 
         updatedConfig.planDiario = recalculatePlanFromRaw(updatedConfig);
         saveOptions(updatedConfig);
         closeTaskModal();
-        if (window.showToast) window.showToast('Tareas guardadas correctamente', 'success');
+        if (window.showToast) window.showToast('Día actualizado correctamente.', 'success');
     });
 
     cancelModalBtn.addEventListener('click', closeTaskModal);
@@ -1068,6 +1338,16 @@ document.addEventListener('DOMContentLoaded', () => {
         taskModal.classList.remove('active');
         currentEditingDate = null;
         currentTasks = [];
+        currentDayType = 'laborable';
+        if (dayTypeSelect) {
+            dayTypeSelect.value = 'laborable';
+        }
+        if (dayHoursInput) {
+            dayHoursInput.value = '';
+        }
+        setDayTypeState('laborable', { skipRender: true });
+        updateDayHoursHelpText('');
+        updateRestoreButtonState('');
     }
 
 });
