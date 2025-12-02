@@ -1064,6 +1064,33 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
+    function handleNewProjectForTask(taskIdx) {
+        const previousIndex = currentTasks[taskIdx]?.proyectoIndex ?? 0;
+        const newCodeRaw = prompt('Introduce el código de la nueva tarea/proyecto (ej. FEATURE-1234):', '');
+        if (newCodeRaw === null) {
+            currentTasks[taskIdx].proyectoIndex = previousIndex;
+            renderTaskList();
+            return;
+        }
+        const newCode = newCodeRaw.trim();
+        if (!newCode) {
+            if (window.showToast) window.showToast('Código vacío. Operación cancelada.', 'info');
+            currentTasks[taskIdx].proyectoIndex = previousIndex;
+            renderTaskList();
+            return;
+        }
+        const normalizedCode = newCode.toUpperCase();
+        let existingIndex = currentConfigData.proyectos.findIndex(p => (p.codigo || '').toUpperCase() === normalizedCode);
+        if (existingIndex === -1) {
+            currentConfigData.proyectos.push({ codigo: normalizedCode });
+            existingIndex = currentConfigData.proyectos.length - 1;
+            renderProjectList(currentConfigData.proyectos, currentConfigData.sdaComun, currentConfigData.tecnologiaComun);
+            summaryProyectosCountEl.textContent = currentConfigData.proyectos.length;
+        }
+        currentTasks[taskIdx].proyectoIndex = existingIndex;
+        renderTaskList();
+    }
+
     function setDayTypeState(dayType, options = {}) {
         currentDayType = dayType;
         if (dayTypeSelect && dayTypeSelect.value !== dayType) {
@@ -1198,6 +1225,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const projectOptions = currentConfigData.proyectos.map((p, idx) => 
                 `<option value="${idx}" ${task.proyectoIndex === idx ? 'selected' : ''}>${p.codigo}</option>`
             ).join('');
+            const newTaskOption = '<option value="__new__">Nueva tarea</option>';
             
             const tipoOptions = ['Diseño', 'Construcción', 'Pruebas', 'Despliegue'].map(tipo =>
                 `<option value="${tipo}" ${task.tipoTarea === tipo ? 'selected' : ''}>${tipo}</option>`
@@ -1206,6 +1234,7 @@ document.addEventListener('DOMContentLoaded', () => {
             taskItem.innerHTML = `
                 <select class="task-project" data-index="${index}">
                     ${projectOptions}
+                    ${newTaskOption}
                 </select>
                 <select class="task-tipo" data-index="${index}">
                     ${tipoOptions}
@@ -1222,7 +1251,17 @@ document.addEventListener('DOMContentLoaded', () => {
         taskListEl.querySelectorAll('.task-project').forEach(select => {
             select.addEventListener('change', (e) => {
                 const idx = parseInt(e.target.dataset.index);
-                currentTasks[idx].proyectoIndex = parseInt(e.target.value);
+                const value = e.target.value;
+                if (value === '__new__') {
+                    handleNewProjectForTask(idx);
+                    return;
+                }
+                const parsedIndex = parseInt(value, 10);
+                if (isNaN(parsedIndex)) {
+                    currentTasks[idx].proyectoIndex = 0;
+                } else {
+                    currentTasks[idx].proyectoIndex = parsedIndex;
+                }
             });
         });
         
