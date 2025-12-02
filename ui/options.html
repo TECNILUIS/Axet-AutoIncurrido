@@ -12,11 +12,15 @@
         input[type="text"] { padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; box-sizing: border-box;}
         select { padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; box-sizing: border-box; background-color: white; cursor: pointer;}
         button { border: none; border-radius: 4px; cursor: pointer; color: white; padding: 8px 12px; font-size: 14px; box-sizing: border-box;} /* Added box-sizing */
-        .list-container { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; max-height: 150px; /* Altura reducida */ overflow-y: auto; border: 1px solid #eee; padding: 10px; border-radius: 5px; background: #f9f9f9;}
+        .list-container { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; border: 1px solid #eee; padding: 10px; border-radius: 5px; background: #f9f9f9;}
         .rule-row { display: grid; gap: 10px; align-items: center; border: 1px solid #ccc; padding: 8px 10px; border-radius: 5px; background: white;}
-        #project-list .rule-row { grid-template-columns: 1fr auto; } /* Código, SDA Display */
+        #project-list .rule-row { grid-template-columns: minmax(220px, 1fr) minmax(200px, 1fr); }
         #project-list input[type="text"] { background-color: #f0f0f0; border-color: #e0e0e0; cursor: not-allowed;} /* Estilo readonly */
-        #project-list .project-sda-display { font-size: 0.9em; color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        #project-list .project-sda-display { font-size: 0.85em; color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; margin-top: 4px; }
+        .project-tech-config { margin-bottom: 15px; }
+        .project-tech-block label { display: block; font-size: 0.8em; color: #555; margin-bottom: 4px; }
+        .project-tech-select { width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.9em; }
+        .project-code-block { display: flex; flex-direction: column; }
         
         
         /* --- ESTILOS CONTROLES PRINCIPALES (Grid 2 filas explícitas) --- */
@@ -367,27 +371,6 @@
                 <p><strong>Proyectos:</strong> <span id="summary-proyectos-count">0</span></p>
                 <p><strong>Días Planificados (Total):</strong> <span id="summary-dias-count">0</span></p>
             </div>
-            <div class="common-settings">
-                <label for="common-technology">Selector tecnología:</label>
-                <select id="common-technology">
-                    <option value="">-- Seleccionar Tecnología --</option>
-                    <option value="APX">APX</option>
-                    <option value="ASO">ASO</option>
-                    <option value="Cells">Cells</option>
-                    <option value="Data Services">Data Services</option>
-                    <option value="Distribuido (Nacar, Spring, etc.)">Distribuido (Nacar, Spring, etc.)</option>
-                    <option value="Google Cloud Platform">Google Cloud Platform</option>
-                    <option value="Mainframe">Mainframe</option>
-                    <option value="SaaS">SaaS</option>
-                    <option value="Security">Security</option>
-                    <option value="Otras Tecnologías">Otras Tecnologías</option>
-                    <option value="Salesforce">Salesforce</option>
-                    <option value="Openweb">Openweb</option>
-                    <option value="LRA">LRA</option>
-                    <option value="LRBA">LRBA</option>
-                </select>
-                <small>Este valor se utilizará como tecnología por defecto al crear tareas de Construcción.</small>
-            </div>
             <div class="common-settings" style="flex-direction: column; gap:6px;">
                 <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
                     <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
@@ -434,6 +417,27 @@
 
         <h2>Mis Proyectos (Importados)</h2>
         <p>Lista de códigos de proyecto encontrados en el último CSV importado para tu ID.</p>
+        <div class="common-settings project-tech-config">
+            <label for="common-technology">Tecnología global por defecto:</label>
+            <select id="common-technology">
+                <option value="">-- Seleccionar Tecnología --</option>
+                <option value="APX">APX</option>
+                <option value="ASO">ASO</option>
+                <option value="Cells">Cells</option>
+                <option value="Data Services">Data Services</option>
+                <option value="Distribuido (Nacar, Spring, etc.)">Distribuido (Nacar, Spring, etc.)</option>
+                <option value="Google Cloud Platform">Google Cloud Platform</option>
+                <option value="Mainframe">Mainframe</option>
+                <option value="SaaS">SaaS</option>
+                <option value="Security">Security</option>
+                <option value="Otras Tecnologías">Otras Tecnologías</option>
+                <option value="Salesforce">Salesforce</option>
+                <option value="Openweb">Openweb</option>
+                <option value="LRA">LRA</option>
+                <option value="LRBA">LRBA</option>
+            </select>
+            <small>Esta tecnología se aplicará a todos los proyectos salvo que elijas una específica en cada fila.</small>
+        </div>
         <div id="project-list" class="list-container">
              <p style="text-align: center; color: #888;">Los proyectos aparecerán aquí después de importar.</p>
         </div>
@@ -443,10 +447,18 @@
     </div>
 
     <template id="project-template">
-        <div class="rule-row" style="grid-template-columns: 1fr auto;">
-            <input type="text" class="project-codigo" readonly title="Código del Proyecto (Feature)">
-            <span class="project-sda-display" style="font-size: 0.9em; color: #555;" title="SDATool Común Importado"></span>
+        <div class="rule-row project-row">
+            <div class="project-code-block">
+                <input type="text" class="project-codigo" readonly title="Código del Proyecto (Feature)">
+                <span class="project-sda-display" title="SDATool Común Importado"></span>
             </div>
+            <div class="project-tech-block">
+                <label>Tecnología:</label>
+                <select class="project-tech-select">
+                    <option value="">(Usar tecnología global)</option>
+                </select>
+            </div>
+        </div>
     </template>
 
     <!-- Modal para editar/añadir tareas -->

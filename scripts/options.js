@@ -25,6 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Estructura v2.5: planDiario contiene horas calculadas
     const defaultConfig = {
         proyectos: [], // Array de { codigo: string }
+        tecnologiasPorProyecto: {}, // Mapa { 'PROY': 'Tech' } para overrides por proyecto
         sdaComun: "",
         tecnologiaComun: "",
         horasEsperadasDiarias: {}, // Objeto { 'YYYY-MM-DD': 'horas/codigo', ... }
@@ -47,6 +48,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!config.horasEsperadasDiarias || typeof config.horasEsperadasDiarias !== 'object') config.horasEsperadasDiarias = {};
         if (!config.horasEsperadasOriginales || typeof config.horasEsperadasOriginales !== 'object') {
             config.horasEsperadasOriginales = { ...(config.horasEsperadasDiarias || {}) };
+        }
+        if (!config.tecnologiasPorProyecto || typeof config.tecnologiasPorProyecto !== 'object') {
+            config.tecnologiasPorProyecto = {};
         }
         if (!config.manualHoursOverrides || typeof config.manualHoursOverrides !== 'object') {
             config.manualHoursOverrides = {};
@@ -79,6 +83,23 @@ document.addEventListener('DOMContentLoaded', () => {
         const month = String(date.getMonth() + 1).padStart(2, '0');
         const day = String(date.getDate()).padStart(2, '0');
         return `${year}-${month}-${day}`;
+    }
+
+    function buildProjectTechnologyOptions() {
+        const options = ['<option value="">(Usar tecnología global)</option>'];
+        if (technologyInput) {
+            Array.from(technologyInput.options || []).forEach(opt => {
+                const val = opt.value;
+                if (!val) return;
+                const text = opt.textContent || val;
+                options.push(`<option value="${val}">${text}</option>`);
+            });
+        }
+        return options.join('');
+    }
+
+    function normalizeProjectCode(code) {
+        return (code || '').toString().trim().toUpperCase();
     }
 
     function canonicalizeHoursValue(value) {
@@ -299,27 +320,103 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- RENDERIZACIÓN ---
-    function renderProjectList(proyectos = [], sdaGlobal = "", tecnologiaGlobal = "") {
+    function renderProjectList(proyectos = [], sdaGlobal = "", tecnologiaGlobal = "", tecnologiasPorProyecto = {}) {
+        if (!projectList || !projectTemplate) return;
         projectList.innerHTML = '';
         currentProyectos = [];
-    currentSdaComun = sdaGlobal;
+        currentSdaComun = sdaGlobal;
+
+        const normalizedTechMap = {};
+        Object.entries(tecnologiasPorProyecto || {}).forEach(([codigo, value]) => {
+            const normalizedCode = normalizeProjectCode(codigo);
+            if (!normalizedCode) return;
+            normalizedTechMap[normalizedCode] = value;
+        });
+        const selectOptionsHtml = buildProjectTechnologyOptions();
+
         if (!proyectos || !proyectos.length) {
-            projectList.innerHTML = '<p style="text-align: center; color: #888;">Proyectos aparecerán aquí tras importar.</p>'; return;
-        };
+            projectList.innerHTML = '<p style="text-align: center; color: #888;">Proyectos aparecerán aquí tras importar.</p>';
+            return;
+        }
+
         proyectos.forEach((proj, index) => {
-            currentProyectos.push({ codigo: proj.codigo });
+            const projectCode = proj.codigo || '';
+            const normalizedCode = normalizeProjectCode(projectCode);
+            const techOverride = normalizedCode ? normalizedTechMap[normalizedCode] || '' : '';
+            currentProyectos.push({ codigo: projectCode });
+
             const row = projectTemplate.content.cloneNode(true).querySelector('.rule-row');
+            if (!row) return;
             row.dataset.index = index;
-            row.querySelector('.project-codigo').value = proj.codigo || '';
+            if (normalizedCode) {
+                row.dataset.projectCode = normalizedCode;
+            }
+
+            const codeInput = row.querySelector('.project-codigo');
+            if (codeInput) {
+                codeInput.value = projectCode;
+            }
+
+            const techSelect = row.querySelector('.project-tech-select');
+            if (techSelect) {
+                techSelect.innerHTML = selectOptionsHtml;
+                techSelect.value = techOverride;
+                if (normalizedCode) {
+                    techSelect.dataset.projectCode = normalizedCode;
+                }
+            }
+
             const sdaDisplay = row.querySelector('.project-sda-display');
             if (sdaDisplay) {
                 const infoParts = [];
                 if (sdaGlobal) infoParts.push(`SDA: ${sdaGlobal}`);
-                if (tecnologiaGlobal) infoParts.push(`Tech: ${tecnologiaGlobal}`);
+                const effectiveTech = techOverride || proj.tecnologia || tecnologiaGlobal;
+                if (effectiveTech) infoParts.push(`Tech: ${effectiveTech}`);
                 sdaDisplay.textContent = infoParts.length ? `(${infoParts.join(' · ')})` : '';
             }
+
             projectList.appendChild(row);
         });
+    }
+
+    function updateProjectTechnologyOverride(projectCodeRaw, tecnologiaValue) {
+        const normalizedCode = normalizeProjectCode(projectCodeRaw);
+        if (!normalizedCode) {
+            if (window.showToast) window.showToast('No se pudo guardar la tecnología: código inválido.', 'error');
+            return;
+        }
+
+        const normalizedValue = tecnologiaValue ? tecnologiaValue.trim() : '';
+        const currentMap = currentConfigData.tecnologiasPorProyecto || {};
+        const previousValue = currentMap[normalizedCode] || '';
+
+        if (normalizedValue && previousValue === normalizedValue) {
+            return;
+        }
+        if (!normalizedValue && !previousValue && !(normalizedCode in currentMap)) {
+            return;
+        }
+
+        const nextMap = { ...currentMap };
+        if (normalizedValue) nextMap[normalizedCode] = normalizedValue;
+        else delete nextMap[normalizedCode];
+
+        const updatedConfig = ensureConfigShape({
+            ...currentConfigData,
+            tecnologiasPorProyecto: nextMap
+        });
+
+        saveOptions(updatedConfig, 'Tecnología por proyecto actualizada');
+    }
+
+    function handleProjectTechnologyChange(event) {
+        const select = event.target.closest('.project-tech-select');
+        if (!select) return;
+        const row = select.closest('.project-row');
+        const codeInput = row ? row.querySelector('.project-codigo') : null;
+        const fallbackCode = select.dataset.projectCode || (row ? row.dataset.projectCode : '');
+        const projectCode = (codeInput && codeInput.value) || fallbackCode;
+        updateProjectTechnologyOverride(projectCode, select.value || '');
     }
 
     // Renderiza la vista semanal (Lun-Vie) usando planDiario (que ya tiene horas calculadas)
@@ -477,7 +574,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!config) config = defaultConfig;
         config = ensureConfigShape(config);
         currentConfigData = config; // Guardar config completa
-        renderProjectList(config.proyectos, config.sdaComun, config.tecnologiaComun);
+        renderProjectList(config.proyectos, config.sdaComun, config.tecnologiaComun, config.tecnologiasPorProyecto);
         summarySdaEl.textContent = config.sdaComun || 'No definido';
         if (summaryTechEl) summaryTechEl.textContent = config.tecnologiaComun ? config.tecnologiaComun : 'No definida';
         if (technologyInput) technologyInput.value = config.tecnologiaComun || '';
@@ -544,7 +641,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- GUARDADO Y CARGA ---
     // Guarda la configuración COMPLETA (planDiario ya tiene horas calculadas)
     // --- GUARDADO Y CARGA ---
-    function saveOptions(configToSave) {
+    function saveOptions(configToSave, successMessage = '¡Configuración guardada!') {
         if (!configToSave || !configToSave.proyectos) {
              if(window.showToast) window.showToast('Error: Configuración inválida.', 'error'); return;
         }
@@ -555,7 +652,8 @@ document.addEventListener('DOMContentLoaded', () => {
             manualHoursOverrides: { ...(configToSave.manualHoursOverrides || {}) },
             planDiario: { ...(configToSave.planDiario || {}) },
             planDiarioRaw: { ...(configToSave.planDiarioRaw || {}) },
-            manualOverrideDays: { ...(configToSave.manualOverrideDays || {}) }
+            manualOverrideDays: { ...(configToSave.manualOverrideDays || {}) },
+            tecnologiasPorProyecto: { ...(configToSave.tecnologiasPorProyecto || {}) }
         });
         // CAMBIO: Usar 'local' en lugar de 'sync'
         chrome.storage.local.set({ configV2: normalizedConfig }, () => {
@@ -564,7 +662,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.error("Error guardando en local:", chrome.runtime.lastError);
                 if (window.showToast) window.showToast('Error al guardar: ' + chrome.runtime.lastError.message, 'error');
             } else {
-                if (window.showToast) window.showToast('¡Configuración guardada!', 'success');
+                if (window.showToast) window.showToast(successMessage, 'success');
                 render(normalizedConfig, 'save');
             }
         });
@@ -660,12 +758,21 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     console.log("Datos brutos extraídos:", extractedDataRaw);
 
+                    const mergedTechMap = { ...(currentConfigData.tecnologiasPorProyecto || {}) };
+                    const importedTechMap = extractedDataRaw.tecnologiasPorProyecto || {};
+                    Object.entries(importedTechMap).forEach(([code, techValue]) => {
+                        if (!code) return;
+                        if (!techValue) return;
+                        mergedTechMap[code] = techValue;
+                    });
+
                     // 2. Construir configuración base con planRaw y recalcular según overrides actuales
                     console.log("[Import CSV] Recalculando plan en base al CSV + overrides actuales...");
                     const newConfigFinal = ensureConfigShape({
                         proyectos: extractedDataRaw.proyectos,
                         sdaComun: extractedDataRaw.sdaComun,
                         tecnologiaComun: currentConfigData.tecnologiaComun || "",
+                        tecnologiasPorProyecto: mergedTechMap,
                         horasEsperadasDiarias: { ...extractedDataRaw.horasEsperadasDiarias },
                         horasEsperadasOriginales: { ...extractedDataRaw.horasEsperadasDiarias },
                         manualHoursOverrides: {},
@@ -698,6 +805,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let employeeRowIndex = -1; let headerRow = []; let headerIndex = -1;
         let dateColumns = {}; const projects = []; // Array para orden
         let sdaComun = ""; let horasRow = []; const planDiario = {}; let foundHorasRow = false;
+        const projectTechnologies = {};
 
         // 1. Encontrar encabezados y parsear fechas
         for (let i = 0; i < data.length; i++) {
@@ -710,7 +818,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (headerIndex === -1) throw new Error('Fila de encabezados no encontrada (buscando "Usuario").');
         const lowerHeader = headerRow.map(h => h.toLowerCase());
-        const userIdCol = lowerHeader.indexOf('usuario'); const sdaCol = lowerHeader.indexOf('sdatool'); const featureCol = lowerHeader.indexOf('feature');
+        const userIdCol = lowerHeader.indexOf('usuario');
+        const sdaCol = lowerHeader.indexOf('sdatool');
+        const featureCol = lowerHeader.indexOf('feature');
+        const technologyCol = lowerHeader.findIndex(h => h === 'tecnología' || h === 'tecnologia');
         if (userIdCol === -1 || sdaCol === -1 || featureCol === -1) throw new Error('Columnas "Usuario", "SDATool" o "Feature" no encontradas.');
         // Parsear fechas
         let currentMonthStr = ""; let currentYear = "";
@@ -740,6 +851,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const sdaCompleto = (row[sdaCol] || '').trim();
             const codigo = currentFeature;
             const isHorasEsperadasRow = currentFeature.toLowerCase() === 'horas esperadas';
+            const rawTecnologiaCsv = technologyCol !== -1 ? (row[technologyCol] || '').trim() : '';
             let isEmployeeRow = (employeeRowIndex === -1 && currentUserId === employeeId) || (employeeRowIndex !== -1 && currentUserId === '');
 
             if (isEmployeeRow) {
@@ -750,8 +862,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 let proyectoIndex = projects.findIndex(p => p.codigo === codigo);
                 if (codigo && !isHorasEsperadasRow && proyectoIndex === -1) {
-                    projects.push({ codigo: codigo });
+                    const projectEntry = { codigo: codigo };
+                    if (rawTecnologiaCsv) projectEntry.tecnologia = rawTecnologiaCsv;
+                    projects.push(projectEntry);
                     proyectoIndex = projects.length - 1;
+                }
+                if (codigo && !isHorasEsperadasRow) {
+                    const normalizedCode = normalizeProjectCode(codigo);
+                    if (normalizedCode && rawTecnologiaCsv && !projectTechnologies[normalizedCode]) {
+                        projectTechnologies[normalizedCode] = rawTecnologiaCsv;
+                    }
                 }
                 if (codigo && !isHorasEsperadasRow && proyectoIndex !== -1) {
                     for (const colIndex in dateColumns) {
@@ -806,12 +926,17 @@ document.addEventListener('DOMContentLoaded', () => {
             proyectos: projects, // Devuelve el array en orden
             sdaComun: sdaComun,
             horasEsperadasDiarias: horasEsperadas,
-            planDiario: planDiario // Devuelve plan con valorCSV
+            planDiario: planDiario, // Devuelve plan con valorCSV
+            tecnologiasPorProyecto: projectTechnologies
         };
     }
 
 
     // --- EVENT LISTENERS ---
+    if (projectList) {
+        projectList.addEventListener('change', handleProjectTechnologyChange);
+    }
+
     exportBtn.addEventListener('click', exportConfig);
     importJsonBtn.addEventListener('click', () => importJsonFileInput.click());
     importJsonFileInput.addEventListener('change', importConfigJson);
@@ -1084,7 +1209,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (existingIndex === -1) {
             currentConfigData.proyectos.push({ codigo: normalizedCode });
             existingIndex = currentConfigData.proyectos.length - 1;
-            renderProjectList(currentConfigData.proyectos, currentConfigData.sdaComun, currentConfigData.tecnologiaComun);
+            renderProjectList(
+                currentConfigData.proyectos,
+                currentConfigData.sdaComun,
+                currentConfigData.tecnologiaComun,
+                currentConfigData.tecnologiasPorProyecto
+            );
             summaryProyectosCountEl.textContent = currentConfigData.proyectos.length;
         }
         currentTasks[taskIdx].proyectoIndex = existingIndex;
