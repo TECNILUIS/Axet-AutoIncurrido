@@ -29,11 +29,24 @@ document.addEventListener('DOMContentLoaded', () => {
         tecnologiaComun: "",
         horasEsperadasDiarias: {}, // Objeto { 'YYYY-MM-DD': 'horas/codigo', ... }
         planDiario: {}, // Objeto { 'YYYY-MM-DD': [{ proyectoIndex, tipoTarea, horas, minutos }, ...], ... } // Horas PRE-CALCULADAS
+        planDiarioRaw: {}, // Plan en bruto (valorCSV) utilizado para recalcular
+        manualOverrideDays: {}, // Días editados manualmente que no se recalculan
         employeeId: "", // ID del empleado guardado
         overrideEnabled: false, // Toggle para activar/desactivar overrides
         overrideHoursReducido: null, // Override para horario Reducido (Verano/Viernes)
         overrideHoursNormal: null // Override para horario Normal (Resto del año)
     };
+
+    function ensureConfigShape(config) {
+        if (!config) return defaultConfig;
+        if (!config.planDiario || typeof config.planDiario !== 'object') config.planDiario = {};
+        if (!config.planDiarioRaw || typeof config.planDiarioRaw !== 'object') config.planDiarioRaw = {};
+        if (!config.manualOverrideDays || typeof config.manualOverrideDays !== 'object') config.manualOverrideDays = {};
+        if (config.overrideHoursReducido === undefined) config.overrideHoursReducido = null;
+        if (config.overrideHoursNormal === undefined) config.overrideHoursNormal = null;
+        if (config.overrideEnabled === undefined) config.overrideEnabled = false;
+        return config;
+    }
 
     let currentProyectos = []; let currentSdaComun = "";
     let currentConfigData = defaultConfig; // Mantiene la config completa
@@ -166,6 +179,76 @@ document.addEventListener('DOMContentLoaded', () => {
         return resultadoCalculado;
     }
 
+    /**
+     * Recalcula planDiario usando el plan en bruto y las reglas actuales (incluyendo overrides).
+     * Respeta los días editados manualmente indicados en manualOverrideDays.
+     * @param {object} config - Configuración completa actual.
+     * @returns {object} Nuevo planDiario calculado.
+     */
+    function recalculatePlanFromRaw(config) {
+        if (!config || !config.planDiarioRaw || !Object.keys(config.planDiarioRaw).length) {
+            return config?.planDiario ? { ...config.planDiario } : {};
+        }
+
+        const manualDays = config.manualOverrideDays || {};
+        const baseCalcConfig = {
+            proyectos: config.proyectos,
+            horasEsperadasDiarias: config.horasEsperadasDiarias,
+            planDiario: config.planDiarioRaw,
+            overrideEnabled: config.overrideEnabled,
+            overrideHoursReducido: config.overrideHoursReducido,
+            overrideHoursNormal: config.overrideHoursNormal
+        };
+
+        const planCalculadoFinal = {};
+        for (const dateStr of Object.keys(config.planDiarioRaw)) {
+            if (manualDays[dateStr] && config.planDiario && config.planDiario[dateStr]) {
+                planCalculadoFinal[dateStr] = config.planDiario[dateStr];
+                continue;
+            }
+
+            const fecha = new Date(dateStr + 'T12:00:00');
+            if (isNaN(fecha.getTime())) continue;
+
+            const horasCalculadasDia = calcularHorasParaDia_v2_7(fecha, baseCalcConfig);
+            if (!horasCalculadasDia || !Object.keys(horasCalculadasDia).length) continue;
+
+            const planFinalDia = [];
+            const planBrutoDia = config.planDiarioRaw[dateStr] || [];
+
+            for (const idx of Object.keys(horasCalculadasDia)) {
+                const tiempo = horasCalculadasDia[idx];
+                const idxInt = parseInt(idx, 10);
+                if (isNaN(idxInt)) continue;
+                const reglaOriginal = planBrutoDia.find(r => r.proyectoIndex === idxInt || r.proyectoIndex == idx);
+                if (!reglaOriginal) continue;
+                planFinalDia.push({
+                    proyectoIndex: idxInt,
+                    tipoTarea: reglaOriginal.tipoTarea,
+                    horas: tiempo.horas,
+                    minutos: tiempo.minutos
+                });
+            }
+
+            if (planFinalDia.length) {
+                planCalculadoFinal[dateStr] = planFinalDia;
+            }
+        }
+
+        if (config.planDiario) {
+            for (const dateStr of Object.keys(config.planDiario)) {
+                const isManual = manualDays[dateStr];
+                const dayAlreadySet = planCalculadoFinal.hasOwnProperty(dateStr);
+                const dayExistsInRaw = config.planDiarioRaw.hasOwnProperty(dateStr);
+                if ((isManual || !dayExistsInRaw) && !dayAlreadySet) {
+                    planCalculadoFinal[dateStr] = config.planDiario[dateStr];
+                }
+            }
+        }
+
+        return planCalculadoFinal;
+    }
+
     // --- RENDERIZACIÓN ---
     function renderProjectList(proyectos = [], sdaGlobal = "", tecnologiaGlobal = "") {
         projectList.innerHTML = '';
@@ -262,6 +345,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     
                     if (overrideValue !== null && originalHours && !isNaN(parseFloat(originalHours))) {
                         tooltipText = `CSV: ${originalHours}h → Override: ${overrideValue}h`;
+                        horasDisplay = String(overrideValue);
                     }
                 }
                 
@@ -330,6 +414,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Renderiza Proyectos y Resumen + Vista Semanal
     function render(config, source = 'load') {
         if (!config) config = defaultConfig;
+        config = ensureConfigShape(config);
         currentConfigData = config; // Guardar config completa
         renderProjectList(config.proyectos, config.sdaComun, config.tecnologiaComun);
         summarySdaEl.textContent = config.sdaComun || 'No definido';
@@ -402,15 +487,21 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!configToSave || !configToSave.proyectos) {
              if(window.showToast) window.showToast('Error: Configuración inválida.', 'error'); return;
         }
+        const normalizedConfig = ensureConfigShape({
+            ...configToSave,
+            planDiario: { ...(configToSave.planDiario || {}) },
+            planDiarioRaw: { ...(configToSave.planDiarioRaw || {}) },
+            manualOverrideDays: { ...(configToSave.manualOverrideDays || {}) }
+        });
         // CAMBIO: Usar 'local' en lugar de 'sync'
-        chrome.storage.local.set({ configV2: configToSave }, () => {
+        chrome.storage.local.set({ configV2: normalizedConfig }, () => {
             // Verificar si hubo error al guardar (por si acaso excede local, aunque es difícil)
             if (chrome.runtime.lastError) {
                 console.error("Error guardando en local:", chrome.runtime.lastError);
                 if (window.showToast) window.showToast('Error al guardar: ' + chrome.runtime.lastError.message, 'error');
             } else {
                 if (window.showToast) window.showToast('¡Configuración guardada!', 'success');
-                render(configToSave, 'save');
+                render(normalizedConfig, 'save');
             }
         });
     }
@@ -418,7 +509,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function restoreOptions() {
         // CAMBIO: Usar 'local' en lugar de 'sync'
         chrome.storage.local.get({ configV2: defaultConfig }, items => {
-            const cfg = items.configV2 || defaultConfig;
+            const cfg = ensureConfigShape(items.configV2 || defaultConfig);
             // Migración desde nombres antiguos si existen
             if (cfg.overrideHoursReducido === undefined && cfg.overrideHoursSummerFriday !== undefined) {
                 cfg.overrideHoursReducido = cfg.overrideHoursSummerFriday;
@@ -467,8 +558,12 @@ document.addEventListener('DOMContentLoaded', () => {
                      }
                      delete importedConfig.overrideHoursSummerFriday;
                      delete importedConfig.overrideHoursRestOfYear;
-                     // Asumimos que el JSON importado ya tiene las horas calculadas en planDiario
-                     saveOptions(importedConfig); // Guardar Y renderizar
+                     const normalizedImported = ensureConfigShape(importedConfig);
+                     if (normalizedImported.planDiarioRaw && Object.keys(normalizedImported.planDiarioRaw).length) {
+                         normalizedImported.planDiario = recalculatePlanFromRaw(normalizedImported);
+                     }
+                     // Asumimos que si no hay planDiarioRaw, el JSON ya viene calculado
+                     saveOptions(normalizedImported); // Guardar Y renderizar
                      if (window.showToast) window.showToast('¡Config JSON importada y guardada!', 'success');
                  } else { throw new Error('Formato V2.5 incorrecto.'); }
              } catch (error) { if (window.showToast) window.showToast(`Error import JSON: ${error.message}`, 'error'); }
@@ -498,58 +593,22 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     console.log("Datos brutos extraídos:", extractedDataRaw);
 
-                    // 2. Pre-calcular las horas
-                    console.log("[Import CSV] Iniciando pre-cálculo de horas v2.5...");
-                    const planCalculadoFinal = {};
-                    const configBase = { // Config necesaria para la función de cálculo
-                        proyectos: extractedDataRaw.proyectos,
-                        horasEsperadasDiarias: extractedDataRaw.horasEsperadasDiarias,
-                        planDiario: extractedDataRaw.planDiario // Pasar el plan bruto con valorCSV
-                    };
-                    // Iterar sobre los días del plan BRUTO
-                    for (const dateStr in extractedDataRaw.planDiario) {
-                         if (Object.hasOwnProperty.call(extractedDataRaw.planDiario, dateStr)) {
-                             try {
-                                 const fecha = new Date(dateStr + 'T12:00:00'); // Mediodía local
-                                 if (isNaN(fecha)) continue;
-                                 // Calcular horas para este día usando v2.5
-                                 const horasCalculadasDia = calcularHorasParaDia_v2_7(fecha, configBase); // LLAMADA A v2.5
-
-                                 if (horasCalculadasDia && Object.keys(horasCalculadasDia).length > 0) {
-                                     // Formatear para el planDiario final
-                                     const planFinalDia = [];
-                                     const planBrutoDia = extractedDataRaw.planDiario[dateStr] || [];
-                                     for (const idx in horasCalculadasDia) {
-                                         const tiempo = horasCalculadasDia[idx];
-                                         const reglaOriginal = planBrutoDia.find(r => r.proyectoIndex == idx);
-                                         if (reglaOriginal) {
-                                             planFinalDia.push({
-                                                 proyectoIndex: parseInt(idx, 10),
-                                                 tipoTarea: reglaOriginal.tipoTarea,
-                                                 horas: tiempo.horas, // Guardar horas calculadas
-                                                 minutos: tiempo.minutos // Guardar minutos calculados
-                                             });
-                                         }
-                                     }
-                                     if (planFinalDia.length > 0) {
-                                         planCalculadoFinal[dateStr] = planFinalDia;
-                                     }
-                                 }
-                             } catch (e) { console.error(`[Import CSV] Error pre-calculando ${dateStr}:`, e); }
-                         }
-                    }
-                    console.log("[Import CSV] Pre-cálculo v2.5 completado.");
-
-                    // 3. Construir la nueva configuración FINAL
-                    const newConfigFinal = {
+                    // 2. Construir configuración base con planRaw y recalcular según overrides actuales
+                    console.log("[Import CSV] Recalculando plan en base al CSV + overrides actuales...");
+                    const newConfigFinal = ensureConfigShape({
                         proyectos: extractedDataRaw.proyectos,
                         sdaComun: extractedDataRaw.sdaComun,
                         tecnologiaComun: currentConfigData.tecnologiaComun || "",
                         horasEsperadasDiarias: extractedDataRaw.horasEsperadasDiarias,
-                        planDiario: planCalculadoFinal, // Guardar el plan CON horas calculadas
-                        employeeId: employeeId.trim().toUpperCase() // Guardar el employee ID
-                        // Ya no existe reglasPlanificacion
-                    };
+                        planDiarioRaw: extractedDataRaw.planDiario,
+                        planDiario: {},
+                        manualOverrideDays: {},
+                        employeeId: employeeId.trim().toUpperCase(),
+                        overrideEnabled: currentConfigData.overrideEnabled,
+                        overrideHoursReducido: currentConfigData.overrideHoursReducido,
+                        overrideHoursNormal: currentConfigData.overrideHoursNormal
+                    });
+                    newConfigFinal.planDiario = recalculatePlanFromRaw(newConfigFinal);
 
                     saveOptions(newConfigFinal); // Guardar Y renderizar
                     if (window.showToast) window.showToast(`¡${extractedDataRaw.proyectos.length} proyectos y plan diario importados y calculados!`, 'success', 5000);
@@ -740,10 +799,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (overrideEnabledInput) {
         overrideEnabledInput.addEventListener('change', (event) => {
             const isEnabled = event.target.checked;
-            const updatedConfig = {
+            const updatedConfig = ensureConfigShape({
                 ...currentConfigData,
                 overrideEnabled: isEnabled
-            };
+            });
             
             // Update UI immediately
             if (overrideSummerFridayInput) overrideSummerFridayInput.disabled = !isEnabled;
@@ -753,6 +812,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 overrideTable.style.pointerEvents = isEnabled ? 'auto' : 'none';
             }
             
+            updatedConfig.planDiario = recalculatePlanFromRaw(updatedConfig);
             saveOptions(updatedConfig);
         });
     }
@@ -762,10 +822,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const value = event.target.value.trim();
             const numValue = value === '' ? null : parseFloat(value);
             if ((currentConfigData.overrideHoursReducido === null && numValue === null) || currentConfigData.overrideHoursReducido === numValue) return;
-            const updatedConfig = {
+            const updatedConfig = ensureConfigShape({
                 ...currentConfigData,
                 overrideHoursReducido: numValue
-            };
+            });
+            updatedConfig.planDiario = recalculatePlanFromRaw(updatedConfig);
             saveOptions(updatedConfig);
         });
     }
@@ -775,10 +836,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const value = event.target.value.trim();
             const numValue = value === '' ? null : parseFloat(value);
             if ((currentConfigData.overrideHoursNormal === null && numValue === null) || currentConfigData.overrideHoursNormal === numValue) return;
-            const updatedConfig = {
+            const updatedConfig = ensureConfigShape({
                 ...currentConfigData,
                 overrideHoursNormal: numValue
-            };
+            });
+            updatedConfig.planDiario = recalculatePlanFromRaw(updatedConfig);
             saveOptions(updatedConfig);
         });
     }
@@ -961,7 +1023,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     saveTasksBtn.addEventListener('click', () => {
         // Guardar las tareas editadas en planDiario
-        const updatedConfig = { ...currentConfigData };
+        const updatedConfig = ensureConfigShape({
+            ...currentConfigData,
+            planDiario: { ...(currentConfigData.planDiario || {}) },
+            manualOverrideDays: { ...(currentConfigData.manualOverrideDays || {}) }
+        });
         
         // Filtrar tareas con tiempo > 0
         const validTasks = currentTasks.filter(task => 
@@ -975,11 +1041,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 horas: task.horas,
                 minutos: task.minutos
             }));
+            updatedConfig.manualOverrideDays[currentEditingDate] = true;
         } else {
             // Si no hay tareas válidas, eliminar el día del plan
             delete updatedConfig.planDiario[currentEditingDate];
+            if (updatedConfig.manualOverrideDays[currentEditingDate]) {
+                delete updatedConfig.manualOverrideDays[currentEditingDate];
+            }
         }
-        
+
+        updatedConfig.planDiario = recalculatePlanFromRaw(updatedConfig);
         saveOptions(updatedConfig);
         closeTaskModal();
         if (window.showToast) window.showToast('Tareas guardadas correctamente', 'success');
