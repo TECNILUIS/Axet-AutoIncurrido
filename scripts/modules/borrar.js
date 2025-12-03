@@ -55,7 +55,18 @@ async function deleteTasksInRange(startDateStr, endDateStr) {
         await sleep(2000); // Dar tiempo extra para que el calendario pinte los días con sus clases
 
         console.log("[Borrar v5] Buscando días imputados en el calendario visible...");
-        const daysInCalendar = calendarioDiv.querySelectorAll('.dias div[data-fecha-iso].imputado'); // Selector clave
+        let diasContainer = calendarioDiv.querySelector('#dias');
+        if (!diasContainer) diasContainer = calendarioDiv.querySelector('.dias');
+        if (!diasContainer) diasContainer = document.querySelector('#dias');
+        let daysInCalendar = [];
+        if (diasContainer) {
+            daysInCalendar = Array.from(diasContainer.querySelectorAll('div[data-fecha-iso]'))
+                .filter(node => node.classList && node.classList.contains('imputado'));
+        }
+        if (!daysInCalendar.length) {
+            console.warn('[Borrar v5] Selector principal no encontró días imputados. Probando fallback global...');
+            daysInCalendar = Array.from(document.querySelectorAll('div[data-fecha-iso].imputado'));
+        }
         console.log(`[Borrar v5] Encontrados ${daysInCalendar.length} días marcados como '.imputado'.`);
 
         daysInCalendar.forEach(dayElement => {

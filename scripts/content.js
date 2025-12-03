@@ -91,11 +91,11 @@
          console.log("================ FIN INCURRIDO HOY ================");
     }
 
-    async function runBorrarAutomation(config, startDate, endDate) {
-         console.log(`================ INICIO BORRADO (${startDate} a ${endDate}) ================`);
-         await deleteTasksInRange(startDate, endDate); // de borrar.js
-         console.log("================ FIN BORRADO ================");
-    }
+        async function runBorrarAutomation(startDate, endDate) {
+            console.log(`================ INICIO BORRADO (${startDate} a ${endDate}) ================`);
+            await deleteTasksInRange(startDate, endDate); // de borrar.js
+            console.log("================ FIN BORRADO ================");
+        }
 
     async function runIncurrirRangeAutomation(config, startDateStr, endDateStr) {
         console.log(`================ INICIO INCURRIR RANGO (${startDateStr} a ${endDateStr}) ================`);
@@ -143,15 +143,20 @@
         (async () => {
             try {
                 await ensureModulesAreLoaded();
-                const config = await loadConfig();
-                if (!config) throw new Error("Configuración no válida o no cargada.");
+
+                const actionNeedsConfig = request.action !== 'deleteInRange';
+                let config = null;
+                if (actionNeedsConfig) {
+                    config = await loadConfig();
+                    if (!config) throw new Error("Configuración no válida o no cargada.");
+                }
 
                 switch (request.action) {
                     case "incurrirHoy":
                         await runIncurrirAutomation(config);
                         break;
                     case "deleteInRange":
-                        await runBorrarAutomation(config, request.startDate, request.endDate);
+                        await runBorrarAutomation(request.startDate, request.endDate);
                         break;
                     case "incurrirInRange":
                         await runIncurrirRangeAutomation(config, request.startDate, request.endDate);
